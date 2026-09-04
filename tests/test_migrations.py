@@ -56,6 +56,12 @@ def test_migrations_apply_incrementally():
     cols_txn_003 = {c["name"] for c in inspector.get_columns("transactions")}
     assert "prev_hash" in cols_txn_003
     assert "chain_hash" in cols_txn_003
+    assert "chain_seq" not in cols_txn_003
+
+    command.upgrade(cfg, "004")
+    inspector = inspect(engine)
+    cols_txn_004 = {c["name"] for c in inspector.get_columns("transactions")}
+    assert "chain_seq" in cols_txn_004
 
     with engine.begin() as conn:
         conn.execute(text(

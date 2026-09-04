@@ -2,6 +2,7 @@ import enum
 import uuid
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Column,
     DateTime,
@@ -48,6 +49,9 @@ class Transaction(Base):
     request_hash = Column(String(64), nullable=False)
     prev_hash = Column(String(64), nullable=True)
     chain_hash = Column(String(64), nullable=True)
+    # Append order for the hash chain. created_at is transaction start time, so
+    # it does not match commit order and cannot be used to walk the chain.
+    chain_seq = Column(BigInteger, nullable=True, unique=True)
     reference = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

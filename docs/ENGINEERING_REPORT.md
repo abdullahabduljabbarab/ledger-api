@@ -36,15 +36,17 @@ Infrastructure defined in Terraform: Cloud SQL, Artifact Registry, Cloud Run, Pu
 
 **Tamper-evident hash chain.** Each transaction stores `prev_hash` (the previous transaction's `chain_hash`) and its own `chain_hash` (SHA-256 of `id|key|type|amount|request_hash|prev_hash`). The chain verifier recomputes every hash and detects any modification.
 
+**Serialised chain appends.** Chain linking takes a transaction-scoped PostgreSQL advisory lock, so concurrent writers cannot read the same tip and fork the chain. Append order is recorded in a `chain_seq` column rather than inferred from `created_at`, because `now()` returns transaction start time and therefore does not match commit order. The column is unique, so a failure of the lock surfaces as a database error rather than a silently forked chain. This design came directly out of load testing, which is described below.
+
 **Transactional outbox.** Events are written to an `outbox_events` table inside the same database transaction as ledger entries. This guarantees that if entries exist, the event exists. A relay endpoint marks events as published for downstream consumers.
 
 ## Numbers
 
 | Metric | Value |
 |--------|-------|
-| Test count | 50 |
+| Test count | 52 |
 | Property-based test examples (Hypothesis) | 190+ per run |
-| Alembic migrations | 3 (initial schema, outbox table, hash chain columns) |
+| Alembic migrations | 4 (initial schema, outbox table, hash chain columns, chain sequence) |
 | API endpoints | 15 |
 | Roles (RBAC) | 3 (customer, auditor, admin) |
 | STRIDE threat categories covered | 6/6 |
@@ -55,19 +57,19 @@ Infrastructure defined in Terraform: Cloud SQL, Artifact Registry, Cloud Run, Pu
 | Category | Tests | What they prove |
 |----------|-------|-----------------|
 | Transaction lifecycle | 9 | Deposits, withdrawals, transfers, validation, edge cases |
-| Concurrency | 1 | Parallel withdrawals cannot overspend (row-level locking) |
-| Idempotency | 2 | Duplicate keys return original, mismatched keys return 409 |
-| Decimal precision | 1 | 100 x 0.01 = 1.00 exactly (not 0.999...98) |
-| Ledger invariants | 2 | Per-transaction and global sum = 0 |
-| Entry immutability | 2 | No PUT or DELETE on ledger entries |
-| Account lifecycle | 2 | Create, retrieve, duplicate name rejected |
+| Auth / RBAC | 11 | Login, token validation, role enforcement, privilege escalation prevention |
 | Property-based (Hypothesis) | 5 | Random operation sequences preserve invariants |
+| Audit / hash chain | 5 | Independent recomputation, chain intact, tamper detected, amounts normalised |
+| Account lifecycle | 4 | Create, retrieve, duplicate name rejected, listing |
 | Resilience / failure injection | 4 | Commit crash rolls back, rapid-fire idempotency, failed transfers leave no partial state |
 | Transactional outbox | 3 | Events created atomically, relay publishes, no duplicates on replay |
-| Audit / reconciliation | 2 | Independent balance recomputation, invariant checks |
-| Hash chain | 2 | Chain intact after operations, tamper detected on modification |
-| Auth / RBAC | 11 | Login, token validation, role enforcement, privilege escalation prevention |
+| Concurrency | 2 | Parallel withdrawals cannot overspend, concurrent transfers cannot fork the chain |
+| Idempotency | 2 | Duplicate keys return original, mismatched keys return 409 |
+| Ledger invariants | 2 | Per-transaction and global sum = 0 |
+| Entry immutability | 2 | No PUT or DELETE on ledger entries |
+| Decimal precision | 1 | 100 x 0.01 = 1.00 exactly (not 0.999...98) |
 | Schema evolution | 1 | Migrations apply incrementally, data survives upgrade/downgrade |
+| Health | 1 | Database connectivity probe reports status and latency |
 
 ## Injected failures tested
 
@@ -76,6 +78,17 @@ Infrastructure defined in Terraform: Cloud SQL, Artifact Registry, Cloud Run, Pu
 - Insufficient-funds transfer (no partial entries left behind)
 - 20 consecutive overdraw attempts (balance unchanged)
 - Hash chain tampering (detected by verifier)
+- Concurrent transfers across disjoint account pairs (chain stays linear)
+
+## What load testing found
+
+Load testing the live deployment produced no failed requests and met every latency target, but the hash chain verifier failed afterwards. The reconciliation engine passed, so the ledger itself was correct; the fault was in the audit layer's own linking and ordering logic.
+
+Two defects were responsible, and neither was reachable from the unit tests because both require real parallelism. Chain appends were not serialised, so transfers between disjoint account pairs could link to the same predecessor. Deposits and withdrawals happened to be safe only because they all lock the shared External Clearing account. Separately, verification walked the chain by `created_at`, which is transaction start time rather than commit time, so correctly linked transactions could still be reported as broken.
+
+Writing the regression test then exposed a third defect: on a cold database, concurrent writers all miss the External Clearing lookup and race to insert the same unique name.
+
+All three are fixed and covered by tests. The wider point is that the correctness invariants held throughout, the independent audit layer caught the fault rather than a user noticing a wrong balance, and the bug only appeared once the system was put under genuine concurrent load.
 
 ## Cloud architecture
 
@@ -98,10 +111,11 @@ Infrastructure defined in Terraform: Cloud SQL, Artifact Registry, Cloud Run, Pu
 | Overdraw prevention | Automated test + property test | `test_overdraw_never_permitted`, concurrent withdrawal test |
 | Crash recovery | Failure injection test | `test_commit_failure_rolls_back` |
 | Tamper detection | Automated test + audit endpoint | `test_hash_chain_detects_tamper`, `GET /audit/chain` |
+| Chain integrity under concurrency | Automated test + load test | `test_concurrent_transfers_keep_chain_linear`, Locust run |
 | Role-based access | Automated test | 11 auth tests covering all role/endpoint combinations |
 | Schema evolution | Migration test | `test_migrations_apply_incrementally` |
 | Decimal precision | Automated test | `test_decimal_precision` (100 x 0.01 = 1.00) |
-| API correctness | OpenAPI spec + automated tests | `/docs` serves auto-generated spec, 50 tests validate behaviour |
+| API correctness | OpenAPI spec + automated tests | `/docs` serves auto-generated spec, 52 tests validate behaviour |
 
 ## Design trade-offs
 

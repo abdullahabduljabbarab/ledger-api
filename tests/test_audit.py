@@ -63,6 +63,17 @@ def test_hash_chain_intact(client):
     assert len(data["broken_links"]) == 0
 
 
+def test_hash_chain_survives_unnormalised_amounts(client):
+    """An amount sent as "10" is stored as 10.00 and must still verify."""
+    acc = _create_account(client)
+    _deposit(client, acc, "10")
+    _deposit(client, acc, "7.5")
+
+    data = client.get("/audit/chain").json()
+    assert data["status"] == "pass", data["broken_links"][:3]
+    assert data["chain_length"] == 2
+
+
 def test_hash_chain_detects_tamper(client, db):
     acc = _create_account(client)
     _deposit(client, acc, "100.00")
@@ -74,8 +85,8 @@ def test_hash_chain_detects_tamper(client, db):
 
     txn = db.execute(
         select(Transaction)
-        .where(Transaction.chain_hash.isnot(None))
-        .order_by(Transaction.created_at.asc())
+        .where(Transaction.chain_seq.isnot(None))
+        .order_by(Transaction.chain_seq.asc())
         .limit(1)
     ).scalar_one()
     txn.chain_hash = "tampered" + txn.chain_hash[8:]

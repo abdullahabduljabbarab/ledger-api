@@ -98,3 +98,42 @@ Structured observability, transactional outbox pattern, infrastructure as code, 
 
 ### Next
 Full README. Locust load test against live GCP deployment.
+
+## Day 4
+
+### Goal
+Authentication and access control, independent verification of the ledger, tamper evidence, threat modelling, then load test the live deployment and fix whatever it finds.
+
+### Completed
+- JWT authentication with three roles (customer, auditor, admin). POST /auth/token issues HS256 tokens carrying the role claim, expiring after 60 minutes. Passwords hashed with bcrypt.
+- Role-based access control across every endpoint. Account provisioning is admin only. Transactions are admin or customer. Audit endpoints are auditor or admin. Outbox relay is admin only. Health is the only public route.
+- Reconciliation engine at GET /audit/verify. Independently recomputes every account balance from raw entry sums and runs six checks: global invariant, per-transaction invariant, balance recomputation, referential integrity, idempotency key uniqueness, and entry count per transaction. It shares no code with the write path, so it genuinely re-derives rather than re-reading what the service already believes.
+- Tamper-evident hash chain at GET /audit/chain. Each transaction stores the previous transaction's hash alongside its own SHA-256 of id, key, type, amount, request hash and predecessor. The verifier recomputes the entire chain and reports broken links and modified rows separately.
+- STRIDE threat model covering all six categories, each threat mapped to its mitigation and the test that proves it, plus an honest list of gaps not yet closed.
+- Service level objectives defined up front, before measuring, so the targets were not written to match the results.
+- Schema evolution test applying migrations one at a time, asserting the schema at each step, then downgrading and confirming data survives.
+- Engineering report covering architecture, key decisions, test categories, injected failures and design trade-offs.
+- Load test executed against live Cloud Run: 828 requests over 60 seconds at 5 concurrent users, zero failures, p50 72ms, p95 110ms, p99 260ms, 13.9 req/s. Every SLO met.
+- Migration 004 fixing two hash chain concurrency defects found by that load test, with a regression test that reproduces the fault.
+- Test count: 34 to 52.
+
+### Problems / Decisions
+- Replaced passlib with the bcrypt library directly. Passlib reads `bcrypt.__about__` for version detection, which modern bcrypt no longer exposes, and it also rejected passwords over 72 bytes rather than truncating.
+- The load test found a real bug that the unit tests could not reach. The reconciliation engine passed, but the hash chain verifier failed with forked links. Two separate causes.
+- First cause: `link_transaction` read the chain tip without serialising, so concurrent writers could link to the same predecessor. Deposits and withdrawals were protected by accident, since both lock the shared External Clearing account, but transfers between disjoint account pairs share no row lock and forked the chain. Fixed with a transaction-scoped advisory lock, held until commit, so the tip that is read is final.
+- Second cause: the verifier walked the chain ordered by `created_at`. In PostgreSQL `now()` returns transaction start time rather than commit time, so a transaction that began earlier but committed later was verified out of order and reported broken even when correctly linked. Fixed with an explicit `chain_seq` column recording true append order. It carries a unique constraint, so if the lock ever fails the database rejects the fork rather than silently accepting it.
+- Writing the regression test surfaced a third defect. Sixteen cold-start writers all miss the External Clearing lookup and race to insert the same unique name, which returns 500 on a fresh database. Fixed with a second advisory lock on the creation path only, so the common case where the account already exists takes no lock at all.
+- Also fixed a latent hash bug: an amount supplied as "10" was hashed before the database normalised it to 10.00, so verification on read-back would report a false tamper. Amounts are now quantised to the column precision before hashing.
+- Migration 004 re-anchors the existing chain in one deterministic pass. This repairs rows damaged by the old behaviour rather than leaving a permanently failing audit endpoint.
+- Locust could not reach the live API from this machine at first. Norton antivirus intercepts TLS and re-signs certificates with its own root, which is trusted by Windows but absent from Python's certifi bundle, and Locust sets `trust_env = False` so REQUESTS_CA_BUNDLE is ignored. Worked around outside the repo so no test code trusts a weaker certificate path.
+
+### Evidence
+- Auth verified on live: admin creates accounts (201), customer denied (403), auditor reaches /audit/verify (200) but denied on transactions (403)
+- GET /audit/verify returns pass on live with all six checks holding across 416 transactions and 9 accounts
+- Load test: 828 requests, 0 failures, 13.9 req/s sustained
+- Regression test fails 3 times out of 3 with the advisory lock removed, passes with it restored
+- 52/52 tests green locally
+- ruff: all checks passed
+
+### Next
+Full README.

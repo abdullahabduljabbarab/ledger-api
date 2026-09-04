@@ -30,6 +30,7 @@ This threat model covers the ledger-api service: a double-entry financial ledger
 | Threat | Mitigation | Test |
 |--------|------------|------|
 | Direct database modification of ledger entries | Tamper-evident hash chain: each transaction includes `prev_hash` and `chain_hash`. Any modification breaks the chain. | `test_hash_chain_detects_tamper` |
+| Forged chain link inserted under concurrent load | Chain appends serialise on a transaction-scoped advisory lock and append order is recorded in a unique `chain_seq` column, so a fork is rejected by the database rather than accepted. | `test_concurrent_transfers_keep_chain_linear` |
 | Modification of transaction amounts after recording | Append-only ledger design. No UPDATE or DELETE endpoints for entries. Corrections require compensating entries. | `test_no_put_on_entries`, `test_no_delete_on_entries` |
 | SQL injection via API parameters | All queries use SQLAlchemy ORM with parameterised queries. Pydantic validates and coerces all input before it reaches the service layer. | Type-safe UUID/Decimal parsing rejects injection strings |
 
@@ -81,7 +82,8 @@ This threat model covers the ledger-api service: a double-entry financial ledger
 |-------------|-------|
 | Idempotency prevents duplicate transactions | `test_idempotent_deposits_never_duplicate`, `test_idempotency_conflict_never_creates_transaction`, `test_duplicate_idempotency_key_under_rapid_fire` |
 | Double-entry invariant holds under all operations | `test_audit_verify_clean_ledger`, `test_balance_equals_sum_of_entries`, `test_ledger_invariants_under_random_operations` |
-| Hash chain detects tampering | `test_hash_chain_intact`, `test_hash_chain_detects_tamper` |
+| Hash chain detects tampering | `test_hash_chain_intact`, `test_hash_chain_detects_tamper`, `test_hash_chain_survives_unnormalised_amounts` |
+| Hash chain stays linear under concurrency | `test_concurrent_transfers_keep_chain_linear` |
 | Role-based access control | `test_customer_cannot_create_account`, `test_auditor_cannot_transact`, `test_customer_cannot_verify_ledger`, `test_customer_cannot_access_outbox` |
 | Authentication required | `test_unauthenticated_request_rejected`, `test_login_invalid_credentials` |
 | Overdraw prevention | `test_overdraw_never_permitted`, `test_withdrawal_overdraw_preserves_ledger_integrity` |

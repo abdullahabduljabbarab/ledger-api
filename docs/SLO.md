@@ -22,17 +22,33 @@
 
 ## Load Test Results
 
-*To be filled after running Locust against the live deployment.*
+Run on 2026-09-04 against the live Cloud Run deployment. 828 requests over 60 seconds at 5 concurrent users, of which 487 were transaction writes.
 
 | Metric | Target | Measured | Status |
 |--------|--------|----------|--------|
-| Availability | 99.5% | | |
-| p50 latency | < 200ms | | |
-| p95 latency | < 500ms | | |
-| p99 latency | < 1000ms | | |
-| Error rate (5xx) | < 1% | | |
-| Throughput | > 10 req/s | | |
-| Ledger integrity | pass | | |
+| Availability | 99.5% | 100% (0 of 828 failed) | pass |
+| p50 latency | < 200ms | 72ms | pass |
+| p95 latency | < 500ms | 110ms | pass |
+| p99 latency | < 1000ms | 260ms | pass |
+| Error rate (5xx) | < 1% | 0% | pass |
+| Throughput | > 10 req/s | 13.9 req/s | pass |
+| Reconciliation (`/audit/verify`) | pass | pass | pass |
+| Hash chain (`/audit/chain`) | pass | fail, see below | fixed in 004 |
+
+Mean response time was 74.5ms and the slowest single request was 580ms. Per-endpoint medians: health 43ms, balance reads 47ms, entry listings 48ms, transaction writes 80ms.
+
+The slowest endpoint is `POST /auth/token` at 570ms. That is expected rather than a regression: bcrypt is deliberately expensive to make password brute-forcing costly, and login happens once per session rather than per request.
+
+## What the load test found
+
+The reconciliation engine passed cleanly, but the hash chain verifier failed with forked links. Two defects were responsible, neither of which the unit tests could reach because both require genuine parallelism:
+
+1. `link_transaction` read the chain tip without serialising, so two concurrent writers could link to the same predecessor. Deposits and withdrawals were accidentally protected because they all lock the shared External Clearing account, but transfers between disjoint account pairs share no row lock and forked the chain.
+2. The verifier walked the chain in `created_at` order. In PostgreSQL `now()` returns transaction start time, not commit time, so a transaction that began earlier but committed later was verified out of order and reported as broken even when correctly linked.
+
+Both are fixed in migration 004: a transaction-scoped advisory lock serialises chain appends, and an explicit `chain_seq` column records true append order. A regression test reproduces the fork with concurrent transfers and fails reliably without the lock.
+
+This is the value of load testing stated plainly. The correctness invariants held throughout, the audit layer detected the fault, and the defect was only reachable under real concurrency.
 
 ## Post-Load Verification
 

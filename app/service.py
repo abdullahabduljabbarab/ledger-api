@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.chain import link_transaction
@@ -17,11 +17,24 @@ logger = logging.getLogger("ledger.service")
 
 EXTERNAL_CLEARING_NAME = "External Clearing"
 
+CLEARING_LOCK_KEY = 8891275
 
-def get_or_create_clearing_account(db: Session) -> Account:
-    account = db.execute(
+
+def _select_clearing_account(db: Session) -> Account | None:
+    return db.execute(
         select(Account).where(Account.name == EXTERNAL_CLEARING_NAME)
     ).scalar_one_or_none()
+
+
+def get_or_create_clearing_account(db: Session) -> Account:
+    account = _select_clearing_account(db)
+    if account is not None:
+        return account
+
+    # Cold start only: without this, a first burst of concurrent transactions
+    # all miss the lookup and race to insert the same unique account name.
+    db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": CLEARING_LOCK_KEY})
+    account = _select_clearing_account(db)
     if account is None:
         account = Account(name=EXTERNAL_CLEARING_NAME, is_system=True)
         db.add(account)
