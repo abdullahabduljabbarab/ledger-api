@@ -69,4 +69,5 @@ jobs:
           --region europe-west2
           --allow-unauthenticated
           --add-cloudsql-instances ledger-api-507618:europe-west2:ledger-db
-          --set-env-vars DATABASE_URL=postgresql://postgres:LedgerPass2026@/ledger?host=/cloudsql/ledger-api-507618:europe-west2:ledger-db,PUBSUB_TOPIC=projects/ledger-api-507618/topics/transaction-events
+          --set-env-vars DATABASE_URL=postgresql://postgres:LedgerPass2026@/ledger?host=/cloudsql/ledger-api-507618:europe-west2:ledger-db,PUBSUB_TOPIC=projects/ledger-api-507618/topics/transaction-events,ENVIRONMENT=production
+          --set-secrets JWT_SECRET_KEY=jwt-secret-key:latest

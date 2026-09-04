@@ -3,11 +3,14 @@ import time
 import uuid as uuid_mod
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select, text
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.auth import (
@@ -44,7 +47,53 @@ from app.service import compute_balance, create_transaction
 setup_logging()
 logger = logging.getLogger("ledger.api")
 
-app = FastAPI(title="Ledger API", version="0.1.0")
+DESCRIPTION = """
+An append-only double-entry financial ledger.
+
+Every committed transaction produces balanced debit and credit entries that sum
+to zero. Balances are derived from those entries rather than stored, so a
+balance can never drift from the history that produced it.
+
+**Correctness properties**
+
+- Concurrent writes are serialised with row locks taken in deterministic order
+- Retries are idempotent, and key reuse with different parameters is rejected
+- Transactions are chained with SHA-256 so tampering is detectable
+- A reconciliation engine recomputes ledger state independently of the write path
+
+**Authentication**
+
+Call `POST /auth/token` to obtain a bearer token, then authorise with it.
+Each role carries different permissions: customers transact, auditors inspect,
+admins provision.
+"""
+
+TAGS = [
+    {"name": "System", "description": "Health and service status. No authentication required."},
+    {"name": "Authentication", "description": "Token issuance and role assignment."},
+    {"name": "Accounts", "description": "Account provisioning and derived balances."},
+    {"name": "Transactions", "description": "Deposits, withdrawals and transfers."},
+    {"name": "Statements", "description": "Ledger entries and account statements."},
+    {
+        "name": "Audit and Reconciliation",
+        "description": "Independent verification of ledger integrity and the tamper-evident chain.",
+    },
+    {
+        "name": "Event Delivery",
+        "description": "Transactional outbox relay. At-least-once delivery to Pub/Sub.",
+    },
+]
+
+app = FastAPI(
+    title="Ledger API",
+    version="1.0.0",
+    description=DESCRIPTION,
+    openapi_tags=TAGS,
+    license_info={"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
+)
+
+STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.middleware("http")
@@ -68,7 +117,75 @@ async def request_tracing(request: Request, call_next):
     return response
 
 
-@app.post("/auth/token")
+@app.get("/", include_in_schema=False)
+def portal():
+    return FileResponse(STATIC_DIR / "portal.html")
+
+
+@app.get("/reference", include_in_schema=False)
+def reference():
+    """Scalar API explorer. Served from CDN, spec served by this service."""
+    return HTMLResponse(
+        """<!doctype html>
+<html>
+  <head>
+    <title>Ledger API Reference</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/static/favicon.svg" />
+  </head>
+  <body>
+    <script id="api-reference" data-url="/openapi.json"></script>
+    <script>
+      var configuration = {
+        theme: "deepSpace",
+        darkMode: true,
+        hideDownloadButton: false,
+        searchHotKey: "k",
+      };
+      document.getElementById("api-reference").dataset.configuration =
+        JSON.stringify(configuration);
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  </body>
+</html>"""
+    )
+
+
+@app.get("/status", tags=["System"], summary="Public service status")
+def status(db: Session = Depends(get_db)):
+    """Unauthenticated summary used by the portal.
+
+    Deliberately cheap: counts and a connectivity probe only. The full
+    reconciliation is an authenticated endpoint because it recomputes every
+    balance, which is not something an anonymous caller should be able to
+    trigger on demand.
+    """
+    start = time.monotonic()
+    accounts = db.execute(select(func.count()).select_from(Account)).scalar()
+    transactions = db.execute(select(func.count()).select_from(Transaction)).scalar()
+    entries = db.execute(select(func.count()).select_from(LedgerEntry)).scalar()
+    pending = db.execute(
+        select(func.count())
+        .select_from(OutboxEvent)
+        .where(OutboxEvent.published_at.is_(None))
+    ).scalar()
+    db_ms = (time.monotonic() - start) * 1000
+
+    return {
+        "status": "operational",
+        "database": "connected",
+        "db_latency_ms": round(db_ms, 1),
+        "region": "europe-west2",
+        "platform": "Cloud Run",
+        "accounts": accounts,
+        "transactions": transactions,
+        "ledger_entries": entries,
+        "outbox_pending": pending,
+    }
+
+
+@app.post("/auth/token", tags=["Authentication"], summary="Obtain a bearer token")
 def login(form: OAuth2PasswordRequestForm = Depends()):
     user = authenticate_user(form.username, form.password)
     if user is None:
@@ -80,7 +197,7 @@ def login(form: OAuth2PasswordRequestForm = Depends()):
     return {"access_token": token, "token_type": "bearer"}
 
 
-@app.get("/health")
+@app.get("/health", tags=["System"], summary="Liveness and database probe")
 def health(db: Session = Depends(get_db)):
     start = time.monotonic()
     db.execute(text("SELECT 1"))
@@ -88,7 +205,13 @@ def health(db: Session = Depends(get_db)):
     return {"status": "ok", "database": "connected", "db_latency_ms": round(db_ms, 1)}
 
 
-@app.post("/accounts", response_model=AccountResponse, status_code=201)
+@app.post(
+    "/accounts",
+    response_model=AccountResponse,
+    status_code=201,
+    tags=["Accounts"],
+    summary="Create an account",
+)
 def post_account(
     data: AccountCreate,
     db: Session = Depends(get_db),
@@ -107,7 +230,12 @@ def post_account(
     return account
 
 
-@app.get("/accounts/{account_id}", response_model=AccountResponse)
+@app.get(
+    "/accounts/{account_id}",
+    response_model=AccountResponse,
+    tags=["Accounts"],
+    summary="Retrieve an account",
+)
 def get_account(
     account_id: UUID,
     db: Session = Depends(get_db),
@@ -119,7 +247,12 @@ def get_account(
     return account
 
 
-@app.get("/accounts/{account_id}/balance", response_model=BalanceResponse)
+@app.get(
+    "/accounts/{account_id}/balance",
+    response_model=BalanceResponse,
+    tags=["Accounts"],
+    summary="Derived balance",
+)
 def get_balance(
     account_id: UUID,
     db: Session = Depends(get_db),
@@ -132,7 +265,13 @@ def get_balance(
     return BalanceResponse(account_id=account_id, balance=balance)
 
 
-@app.post("/transactions", response_model=TransactionResponse, status_code=201)
+@app.post(
+    "/transactions",
+    response_model=TransactionResponse,
+    status_code=201,
+    tags=["Transactions"],
+    summary="Record a transaction",
+)
 def post_transaction(
     data: TransactionCreate,
     db: Session = Depends(get_db),
@@ -142,7 +281,12 @@ def post_transaction(
     return txn
 
 
-@app.get("/transactions", response_model=PaginatedResponse[TransactionResponse])
+@app.get(
+    "/transactions",
+    response_model=PaginatedResponse[TransactionResponse],
+    tags=["Transactions"],
+    summary="List transactions",
+)
 def list_transactions(
     account_id: UUID | None = Query(None),
     type: TransactionType | None = Query(None),
@@ -181,6 +325,8 @@ def list_transactions(
 @app.get(
     "/accounts/{account_id}/entries",
     response_model=PaginatedResponse[LedgerEntryResponse],
+    tags=["Statements"],
+    summary="List ledger entries",
 )
 def list_entries(
     account_id: UUID,
@@ -217,6 +363,8 @@ def list_entries(
 @app.get(
     "/accounts/{account_id}/statement",
     response_model=StatementResponse,
+    tags=["Statements"],
+    summary="Account statement with running balance",
 )
 def get_statement(
     account_id: UUID,
@@ -266,7 +414,7 @@ def get_statement(
     )
 
 
-@app.get("/outbox/pending")
+@app.get("/outbox/pending", tags=["Event Delivery"], summary="List unpublished events")
 def outbox_pending(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -293,7 +441,12 @@ def outbox_pending(
     }
 
 
-@app.post("/outbox/publish", status_code=200)
+@app.post(
+    "/outbox/publish",
+    status_code=200,
+    tags=["Event Delivery"],
+    summary="Relay pending events to the broker",
+)
 def outbox_publish(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -327,7 +480,11 @@ def outbox_publish(
     return {"published": published, "failed": failed, "transport": transport.name}
 
 
-@app.get("/audit/verify")
+@app.get(
+    "/audit/verify",
+    tags=["Audit and Reconciliation"],
+    summary="Recompute and verify ledger integrity",
+)
 def audit_verify(
     db: Session = Depends(get_db),
     user: TokenData = Depends(require_role(Role.auditor, Role.admin)),
@@ -337,7 +494,11 @@ def audit_verify(
     return verify_ledger(db)
 
 
-@app.get("/audit/chain")
+@app.get(
+    "/audit/chain",
+    tags=["Audit and Reconciliation"],
+    summary="Verify the tamper-evident hash chain",
+)
 def audit_chain(
     db: Session = Depends(get_db),
     user: TokenData = Depends(require_role(Role.auditor, Role.admin)),

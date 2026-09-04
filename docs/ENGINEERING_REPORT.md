@@ -46,10 +46,10 @@ Infrastructure defined in Terraform: Cloud SQL, Artifact Registry, Cloud Run, Pu
 
 | Metric | Value |
 |--------|-------|
-| Test count | 54 |
+| Test count | 58 |
 | Property-based test examples (Hypothesis) | 190+ per run |
 | Alembic migrations | 4 (initial schema, outbox table, hash chain columns, chain sequence) |
-| API endpoints | 15 |
+| API endpoints | 17 |
 | Roles (RBAC) | 3 (customer, auditor, admin) |
 | STRIDE threat categories covered | 6/6 |
 | Requirement-to-test traceability entries | 7 |
@@ -65,6 +65,7 @@ Infrastructure defined in Terraform: Cloud SQL, Artifact Registry, Cloud Run, Pu
 | Account lifecycle | 4 | Create, retrieve, duplicate name rejected, listing |
 | Resilience / failure injection | 4 | Commit crash rolls back, rapid-fire idempotency, failed transfers leave no partial state |
 | Transactional outbox | 5 | Events created atomically, relay publishes, no duplicates on replay, transport reported, failed publish leaves rows pending |
+| Event consumer | 4 | Deduplication on event_id: first delivery, redelivery, independent events, idempotent marking |
 | Concurrency | 2 | Parallel withdrawals cannot overspend, concurrent transfers cannot fork the chain |
 | Idempotency | 2 | Duplicate keys return original, mismatched keys return 409 |
 | Ledger invariants | 2 | Per-transaction and global sum = 0 |
@@ -122,7 +123,9 @@ All three are fixed and covered by tests. The wider point is that the correctnes
 | Role-based access | Automated test | 11 auth tests covering all role/endpoint combinations |
 | Schema evolution | Migration test | `test_migrations_apply_incrementally` |
 | Decimal precision | Automated test | `test_decimal_precision` (100 x 0.01 = 1.00) |
-| API correctness | OpenAPI spec + automated tests | `/docs` serves auto-generated spec, 54 tests validate behaviour |
+| API correctness | OpenAPI spec + automated tests | `/docs` serves auto-generated spec, 58 tests validate behaviour |
+| Event consumer deduplication | Automated test | `test_consumer` covers first delivery, redelivery, and independent events |
+| Secret is never the repo default in production | Startup guard + Secret Manager | Service refuses to boot in production without `JWT_SECRET_KEY`; supplied from Secret Manager |
 
 ## Design trade-offs
 

@@ -22,7 +22,29 @@ from google.cloud import pubsub_v1
 
 SUBSCRIPTION = os.getenv("PUBSUB_SUBSCRIPTION")
 
-seen_event_ids = set()
+
+class Deduplicator:
+    """Tracks processed event ids so a redelivered event is a no-op.
+
+    The relay is at-least-once, so this is what makes the consumer safe to run
+    against real Pub/Sub. Kept as a pure object so the contract can be tested
+    without a live subscription.
+    """
+
+    def __init__(self):
+        self._seen = set()
+
+    def is_duplicate(self, event_id: str) -> bool:
+        return event_id in self._seen
+
+    def mark(self, event_id: str) -> None:
+        self._seen.add(event_id)
+
+    def __len__(self) -> int:
+        return len(self._seen)
+
+
+dedup = Deduplicator()
 shutdown = Event()
 
 totals = {"deposit": 0, "withdrawal": 0, "transfer": 0}
@@ -32,7 +54,7 @@ def handle(message):
     event_id = message.attributes.get("event_id")
     event_type = message.attributes.get("event_type", "unknown")
 
-    if event_id in seen_event_ids:
+    if dedup.is_duplicate(event_id):
         print(f"duplicate  {event_type}  event_id={event_id}  (already processed)")
         message.ack()
         return
@@ -49,7 +71,7 @@ def handle(message):
     if kind in totals:
         totals[kind] += 1
 
-    seen_event_ids.add(event_id)
+    dedup.mark(event_id)
     print(
         f"received   {event_type}  amount={payload.get('amount')}  "
         f"txn={payload.get('transaction_id')}"
@@ -71,7 +93,7 @@ def main():
 
     future.cancel()
     future.result(timeout=30)
-    print(f"\nstopped. processed {len(seen_event_ids)} unique events: {totals}")
+    print(f"\nstopped. processed {len(dedup)} unique events: {totals}")
 
 
 if __name__ == "__main__":

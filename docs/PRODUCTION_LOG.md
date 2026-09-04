@@ -202,3 +202,30 @@ Prove two operational claims rather than assert them: that the database can actu
 
 ### Next
 Full README.
+
+## Milestone 7
+
+### Goal
+Turn the root URL into a product surface rather than a raw Swagger page, and close a JWT configuration hole found while reviewing what the page should advertise.
+
+### Completed
+- Product portal at `/`: hero, live status read from `/status`, an evidence strip, the architecture path, correctness guarantees, the six-check integrity panel, the load benchmark, the concurrency-defect story, an illustrative write-path animation, and links into the API surfaces. Static HTML, CSS and vanilla JS, no framework.
+- Public `/status` endpoint: a cheap unauthenticated summary (counts and a connectivity probe) that the portal polls. The full reconciliation stays authenticated because it recomputes every balance, which is not something an anonymous caller should be able to trigger.
+- Scalar API reference at `/reference`, with every endpoint grouped under real tags (System, Authentication, Accounts, Transactions, Statements, Audit and Reconciliation, Event Delivery) and given summaries. Swagger stays at `/docs`.
+- Consumer deduplication extracted into a testable object with four unit tests. Test count 54 to 58.
+
+### Problems / Decisions
+- Found while deciding what the page should show: the deployed service had no `JWT_SECRET_KEY` set, so it was signing tokens with the fallback default that is visible in the public repository. Anyone could forge an admin token without a password. This was the real issue behind the demo credentials, not the credentials themselves.
+- Fixed at three layers. The secret is now stored in Secret Manager and injected at deploy time, the CI deploy references it with `--set-secrets` so it survives redeploys, and the application refuses to start in production when the variable is absent rather than falling back to a value from source control.
+- Removed the demo credentials from the public portal and from the API description. They belong in the repository README for reviewers, not advertised on the live marketing surface.
+- Kept the "Pub/Sub to idempotent consumer" path on the architecture diagram because it is genuinely wired: publishing is verified live and the consumer's deduplication is now unit-tested. Every claim on the page is evidence-backed.
+- Latency of `0 ms` was displayed as `<1 ms`, since a sub-millisecond probe rounding to zero read as fake rather than fast.
+
+### Evidence
+- `/`, `/reference`, `/status`, `/docs`, `/openapi.json` all serve correctly
+- Portal renders cleanly at desktop and tablet widths; the responsive rules cover phone widths
+- 58/58 tests green locally
+- ruff: all checks passed
+
+### Next
+Full README.

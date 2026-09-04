@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ledger</title>
+<meta name="description" content="Append-only double-entry financial ledger with concurrency-safe processing, independent reconciliation and tamper evidence." />
+<link rel="icon" href="/static/favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/portal.css" />
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">LEDGER</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#architecture">Architecture</a>
+      <a href="#correctness">Correctness</a>
+      <a href="#evidence">Evidence</a>
+      <a href="/reference">API</a>
+      <a class="nav-cta" href="https://github.com/abdullahabduljabbarab/ledger-api">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<!-- ============ HERO ============ -->
+<section class="hero">
+  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="wrap hero-inner">
+    <div class="live-pill" id="live-pill">
+      <span class="dot" id="live-dot"></span>
+      <span id="live-text">CONNECTING</span>
+      <span class="pill-sep"></span>
+      <span class="pill-meta">Google Cloud · europe-west2</span>
+    </div>
+
+    <h1>Transaction infrastructure<br class="br-wide" /> engineered for correctness.</h1>
+
+    <p class="lede">
+      A cloud-hosted double-entry financial ledger with concurrency-safe
+      processing, independent reconciliation, tamper evidence and event-driven
+      delivery.
+    </p>
+
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="/reference">Explore the API</a>
+      <a class="btn" href="#architecture">Architecture</a>
+      <a class="btn btn-ghost" href="https://github.com/abdullahabduljabbarab/ledger-api">Source</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ EVIDENCE STRIP ============ -->
+<section class="wrap band" id="evidence">
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-num" data-count="58">58</div>
+      <div class="stat-label">Automated tests</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num"><span data-count="110">110</span><span class="unit">ms</span></div>
+      <div class="stat-label">p95 latency</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" data-count="0">0</div>
+      <div class="stat-label">Load test failures</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num"><span data-count="6">6</span><span class="unit">/6</span></div>
+      <div class="stat-label">Audit checks passing</div>
+    </div>
+  </div>
+  <p class="stat-foot">
+    Live Cloud Run benchmark · 828 requests · 5 concurrent users · 13.9 req/s sustained
+  </p>
+</section>
+
+<!-- ============ SYSTEM STATUS ============ -->
+<section class="wrap band">
+  <div class="section-head">
+    <span class="eyebrow">Live</span>
+    <h2>System status</h2>
+    <p class="sub">Read directly from the running service, refreshed every 30 seconds.</p>
+  </div>
+
+  <div class="status-card">
+    <div class="status-row">
+      <span class="k">API</span>
+      <span class="v"><span class="dot" id="s-api-dot"></span><span id="s-api">checking</span></span>
+    </div>
+    <div class="status-row">
+      <span class="k">PostgreSQL</span>
+      <span class="v"><span class="dot" id="s-db-dot"></span><span id="s-db">checking</span></span>
+    </div>
+    <div class="status-row">
+      <span class="k">Database latency</span>
+      <span class="v mono" id="s-lat">—</span>
+    </div>
+    <div class="status-row">
+      <span class="k">Transactions recorded</span>
+      <span class="v mono" id="s-txn">—</span>
+    </div>
+    <div class="status-row">
+      <span class="k">Ledger entries</span>
+      <span class="v mono" id="s-entries">—</span>
+    </div>
+    <div class="status-row">
+      <span class="k">Accounts</span>
+      <span class="v mono" id="s-accounts">—</span>
+    </div>
+    <div class="status-row">
+      <span class="k">Outbox pending</span>
+      <span class="v mono" id="s-pending">—</span>
+    </div>
+    <div class="status-row">
+      <span class="k">Deployment</span>
+      <span class="v mono">Cloud Run · europe-west2</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ARCHITECTURE ============ -->
+<section class="wrap band" id="architecture">
+  <div class="section-head">
+    <span class="eyebrow">Architecture</span>
+    <h2>How a transaction moves</h2>
+    <p class="sub">Every write is atomic with the event that describes it.</p>
+  </div>
+
+  <div class="arch">
+    <div class="node node-thin">
+      <div class="node-title">Clients</div>
+      <div class="node-sub">Authenticated over HTTPS</div>
+    </div>
+    <div class="conn"><span class="pulse"></span></div>
+
+    <div class="node">
+      <div class="node-title">FastAPI</div>
+      <div class="node-sub">JWT · RBAC · request validation</div>
+      <div class="chips"><span>customer</span><span>auditor</span><span>admin</span></div>
+    </div>
+    <div class="conn"><span class="pulse"></span></div>
+
+    <div class="node node-db">
+      <div class="node-title">PostgreSQL</div>
+      <div class="node-sub">Single atomic transaction</div>
+      <div class="tables">
+        <span>transactions</span>
+        <span>ledger_entries</span>
+        <span>audit chain</span>
+        <span>outbox_events</span>
+      </div>
+    </div>
+    <div class="conn"><span class="pulse"></span></div>
+
+    <div class="node">
+      <div class="node-title">Pub/Sub</div>
+      <div class="node-sub">Relay publishes, then marks delivered</div>
+    </div>
+    <div class="conn"><span class="pulse"></span></div>
+
+    <div class="node node-thin">
+      <div class="node-title">Idempotent consumer</div>
+      <div class="node-sub">Deduplicates on event_id · at-least-once</div>
+    </div>
+  </div>
+
+  <div class="cross">
+    <div class="cross-item"><span class="cross-k">CI/CD</span><span class="cross-v">GitHub Actions · lint, test, deploy</span></div>
+    <div class="cross-item"><span class="cross-k">Observability</span><span class="cross-v">Structured JSON · request correlation</span></div>
+    <div class="cross-item"><span class="cross-k">Infrastructure</span><span class="cross-v">Terraform · declarative GCP</span></div>
+  </div>
+</section>
+
+<!-- ============ CORRECTNESS ============ -->
+<section class="wrap band" id="correctness">
+  <div class="section-head">
+    <span class="eyebrow">Guarantees</span>
+    <h2>What makes it correct</h2>
+  </div>
+
+  <div class="cards">
+    <article class="card">
+      <h3>Double entry</h3>
+      <p>Every committed transaction produces balanced entries. Balances are derived from the journal rather than stored as mutable values, so a balance cannot drift from its history.</p>
+      <code>SUM(entries) = 0</code>
+    </article>
+    <article class="card">
+      <h3>Concurrency control</h3>
+      <p>Row locks taken in deterministic order prevent deadlocks between competing transfers, and a transaction-scoped advisory lock serialises appends to the audit chain.</p>
+      <code>SELECT ... FOR UPDATE</code>
+    </article>
+    <article class="card">
+      <h3>Idempotency</h3>
+      <p>Retries are safe. A repeated key returns the original transaction, while the same key sent with different parameters is rejected outright rather than silently accepted.</p>
+      <code>SHA-256 request identity</code>
+    </article>
+    <article class="card">
+      <h3>Independent audit</h3>
+      <p>Ledger state is recomputed through a verification path that shares no code with the write path, so it re-derives the truth instead of re-reading what the service already believes.</p>
+      <code>6 integrity checks</code>
+    </article>
+  </div>
+</section>
+
+<!-- ============ INTEGRITY ============ -->
+<section class="wrap band">
+  <div class="section-head">
+    <span class="eyebrow">Reconciliation</span>
+    <h2>Ledger integrity</h2>
+    <p class="sub">Verified against the deployed database. Requires an auditor or admin token.</p>
+  </div>
+
+  <div class="audit">
+    <div class="audit-list">
+      <div class="audit-row"><span>Global double-entry invariant</span><span class="pass">PASS</span></div>
+      <div class="audit-row"><span>Per-transaction invariants</span><span class="pass">PASS</span></div>
+      <div class="audit-row"><span>Balance recomputation</span><span class="pass">PASS</span></div>
+      <div class="audit-row"><span>Referential integrity</span><span class="pass">PASS</span></div>
+      <div class="audit-row"><span>Idempotency uniqueness</span><span class="pass">PASS</span></div>
+      <div class="audit-row"><span>Entry cardinality</span><span class="pass">PASS</span></div>
+    </div>
+    <div class="audit-score">
+      <div class="score-num">6<span>/6</span></div>
+      <div class="score-label">Verified</div>
+      <div class="score-meta">
+        Backup restored to a separate database and independently verified:
+        counts matched the live service exactly and the hash chain held.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PERFORMANCE ============ -->
+<section class="wrap band">
+  <div class="section-head">
+    <span class="eyebrow">Benchmark</span>
+    <h2>Behaviour under load</h2>
+    <p class="sub">Locust against the live deployment. 5 concurrent users, 60 seconds.</p>
+  </div>
+
+  <div class="perf">
+    <div class="perf-pair">
+      <div><div class="perf-num">828</div><div class="perf-label">Requests</div></div>
+      <div><div class="perf-num ok">0</div><div class="perf-label">Failures</div></div>
+    </div>
+    <div class="bars">
+      <div class="bar-row">
+        <span class="bar-k">p50</span>
+        <span class="bar-track"><span class="bar-fill" style="--w:28%"></span></span>
+        <span class="bar-v">72 ms</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-k">p95</span>
+        <span class="bar-track"><span class="bar-fill" style="--w:42%"></span></span>
+        <span class="bar-v">110 ms</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-k">p99</span>
+        <span class="bar-track"><span class="bar-fill" style="--w:100%"></span></span>
+        <span class="bar-v">260 ms</span>
+      </div>
+    </div>
+    <div class="perf-foot">
+      <span>13.9 req/s sustained</span>
+      <span class="slo">All SLO targets met</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ THE DEFECT ============ -->
+<section class="wrap band">
+  <div class="section-head">
+    <span class="eyebrow">Engineering</span>
+    <h2>Testing that changed the architecture</h2>
+    <p class="sub">
+      Load testing exposed a fork in the tamper-evident chain that the original
+      52-test suite had never reached. The ledger invariants held throughout,
+      the audit layer caught it, and the fix and its regression test brought the
+      suite to 58.
+    </p>
+  </div>
+
+  <div class="defect">
+    <div class="defect-col">
+      <div class="defect-tag bad">Before</div>
+      <pre class="diagram">Writer A ──┐
+           ├── reads tip #41
+Writer B ──┘
+             ↓
+        CHAIN FORK</pre>
+      <p>Two concurrent transfers read the same chain tip and both linked to it. Ordering by <code>created_at</code> made it worse, because that column holds transaction start time rather than commit time.</p>
+    </div>
+    <div class="defect-col">
+      <div class="defect-tag good">After</div>
+      <pre class="diagram">#41 → #42 → #43
+  serialized append
+             ↓
+         VERIFIED</pre>
+      <p>Appends serialise on a transaction-scoped advisory lock, and true order is recorded in a unique <code>chain_seq</code> column, so a fork is rejected by the database rather than accepted.</p>
+    </div>
+  </div>
+
+  <div class="tags">
+    <span>PostgreSQL advisory lock</span>
+    <span>chain_seq uniqueness</span>
+    <span>regression tested</span>
+    <span>migration re-anchored 417 rows</span>
+  </div>
+</section>
+
+<!-- ============ FLOW ============ -->
+<section class="wrap band">
+  <div class="section-head">
+    <span class="eyebrow">Request lifecycle</span>
+    <h2>What happens on write</h2>
+  </div>
+
+  <div class="flow">
+    <div class="flow-head">
+      <div>
+        <span class="method">POST</span>
+        <span class="path mono">/transactions</span>
+      </div>
+      <button class="btn btn-small" id="flow-btn">Run flow</button>
+    </div>
+    <div class="flow-body">
+      <div class="flow-amount mono">£250.00 <span>Account A → Account B</span></div>
+      <ul class="flow-steps" id="flow-steps">
+        <li>Bearer token verified, role authorised</li>
+        <li>Request body validated and hashed</li>
+        <li>Both accounts locked in UUID order</li>
+        <li>Balanced ledger entries appended</li>
+        <li>Double-entry invariant preserved</li>
+        <li>Transaction linked into the audit chain</li>
+        <li>Outbox event written in the same transaction</li>
+      </ul>
+      <div class="flow-result" id="flow-result"><span class="mono">201 CREATED</span></div>
+    </div>
+    <p class="flow-note">Illustrative animation. Nothing is written to the ledger.</p>
+  </div>
+</section>
+
+<!-- ============ EXPLORE ============ -->
+<section class="wrap band">
+  <div class="section-head">
+    <span class="eyebrow">Interfaces</span>
+    <h2>Explore the platform</h2>
+  </div>
+
+  <div class="explore">
+    <a class="ex-card ex-primary" href="/reference">
+      <div class="ex-k">Interactive reference</div>
+      <p>Modern API exploration with request execution against the live service.</p>
+      <span class="ex-go">Open /reference →</span>
+    </a>
+    <a class="ex-card" href="/docs">
+      <div class="ex-k">Swagger UI</div>
+      <p>The classic OpenAPI development interface, useful for quick manual testing.</p>
+      <span class="ex-go">Open /docs →</span>
+    </a>
+    <a class="ex-card" href="/openapi.json">
+      <div class="ex-k">OpenAPI spec</div>
+      <p>The machine-readable specification generated from the running service.</p>
+      <span class="ex-go">Open /openapi.json →</span>
+    </a>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <span>Ledger · double-entry transaction infrastructure</span>
+    <span class="mono">Cloud Run · Cloud SQL · europe-west2</span>
+  </div>
+</footer>
+
+<script src="/static/portal.js"></script>
+</body>
+</html>

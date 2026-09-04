@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -9,7 +10,26 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-change-in-production")
+logger = logging.getLogger("ledger.auth")
+
+_LOCAL_DEV_SECRET = "local-dev-only-not-for-deployment"
+
+
+def _resolve_secret() -> str:
+    configured = os.getenv("JWT_SECRET_KEY")
+    if configured:
+        return configured
+    # Fail closed in the deployed environment rather than fall back to a value
+    # that is visible in source control. Local runs and tests use a throwaway.
+    if os.getenv("ENVIRONMENT") == "production":
+        raise RuntimeError(
+            "JWT_SECRET_KEY must be set when ENVIRONMENT=production"
+        )
+    logger.warning("JWT_SECRET_KEY not set, using local development secret")
+    return _LOCAL_DEV_SECRET
+
+
+SECRET_KEY = _resolve_secret()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 

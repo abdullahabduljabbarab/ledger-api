@@ -21,7 +21,7 @@ This threat model covers the ledger-api service: a double-entry financial ledger
 
 | Threat | Mitigation | Test |
 |--------|------------|------|
-| Attacker forges JWT to impersonate admin | JWTs signed with HS256 secret. Secret rotated via environment variable, not hardcoded. | `test_unauthenticated_request_rejected`, `test_login_invalid_credentials` |
+| Attacker forges JWT to impersonate admin | JWTs signed with an HS256 secret supplied only from Secret Manager at deploy time. The application refuses to start in production if the secret is absent, so it can never fall back to a value visible in source control. | `test_unauthenticated_request_rejected`, `test_login_invalid_credentials` |
 | Attacker replays a valid JWT after expiration | Tokens expire after 60 minutes (`exp` claim enforced by jose). | Token expiry validated in `get_current_user` |
 | Attacker guesses user credentials | Passwords hashed with bcrypt (cost factor 12). Brute force mitigated by bcrypt's computational cost. | `test_login_invalid_credentials` |
 
