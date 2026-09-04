@@ -1,20 +1,32 @@
 /* Ledger portal.
    Committed dark theme: this is a product page, not a themed document, so the
    palette is painted explicitly rather than following the viewer's preference.
-   Blue is the accent. Green is reserved strictly for operational status. */
+   Teal is the brand accent, gold a sparing editorial accent. Green, amber and
+   red are semantic and never used for branding: green always means a genuinely
+   healthy or verified system state. */
 
 :root {
-  --bg: #0a0c10;
-  --bg-2: #0d1117;
-  --card: #11151c;
-  --card-2: #151b24;
-  --line: #1e252f;
-  --line-2: #2a3341;
-  --fg: #eef2f7;
-  --fg-2: #8a94a3;
-  --fg-3: #5d6675;
-  --accent: #4c8dff;
-  --accent-dim: #2f5da8;
+  --bg: #080c0f;
+  --bg-2: #0c1216;
+  --card: #10171c;
+  --card-2: #131c22;
+  --line: #1c292f;
+  --line-2: #293940;
+  --fg: #f2f4f3;
+  --fg-2: #8d9a9e;
+  --fg-3: #5f6c70;
+
+  /* brand */
+  --accent: #53d6cf;
+  --accent-bright: #6ce7df;
+  --accent-dim: #2c6b67;
+  --accent-soft: rgba(83, 214, 207, 0.08);
+  --accent-glow: rgba(83, 214, 207, 0.14);
+  --gold: #b99a52;
+  --gold-bright: #c9aa60;
+  --gold-soft: rgba(185, 154, 82, 0.10);
+
+  /* semantic, kept separate from brand */
   --ok: #2ed47a;
   --warn: #e8a33d;
   --bad: #e5484d;
@@ -62,8 +74,8 @@ a { color: inherit; text-decoration: none; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand-mark {
   width: 14px; height: 14px; border-radius: 3px;
-  background: linear-gradient(135deg, var(--accent), #8ab4ff);
-  box-shadow: 0 0 14px rgba(76, 141, 255, 0.5);
+  background: linear-gradient(135deg, var(--accent), var(--accent-bright));
+  box-shadow: 0 0 14px rgba(83, 214, 207, 0.45);
 }
 .brand-name { font-weight: 600; letter-spacing: 0.16em; font-size: 14px; }
 .nav-links { display: flex; align-items: center; gap: 26px; }
@@ -74,7 +86,7 @@ a { color: inherit; text-decoration: none; }
   border: 1px solid var(--line-2);
   padding: 6px 14px; border-radius: 6px;
 }
-.nav-cta:hover { border-color: var(--accent-dim); background: rgba(76, 141, 255, 0.08); }
+.nav-cta:hover { border-color: var(--accent-dim); background: var(--accent-soft); }
 @media (max-width: 720px) {
   .nav-links a:not(.nav-cta) { display: none; }
 }
@@ -147,7 +159,7 @@ h1 {
 .btn-primary {
   background: var(--accent); border-color: var(--accent); color: #05080f; font-weight: 600;
 }
-.btn-primary:hover { background: #6ea1ff; border-color: #6ea1ff; }
+.btn-primary:hover { background: var(--accent-bright); border-color: var(--accent-bright); }
 .btn-ghost { background: transparent; }
 .btn-small { padding: 7px 14px; font-size: 13px; }
 
@@ -158,6 +170,7 @@ h1 {
   display: inline-block; font-family: var(--mono); font-size: 11px;
   letter-spacing: 0.18em; color: var(--accent); margin-bottom: 12px;
 }
+.eyebrow.gold { color: var(--gold); }
 h2 {
   margin: 0; font-size: clamp(24px, 3vw, 32px);
   letter-spacing: -0.02em; font-weight: 600; text-wrap: balance;
@@ -221,7 +234,7 @@ h2 {
   font-family: var(--mono); font-size: 11px; color: var(--fg-2);
   border: 1px solid var(--line-2); border-radius: 5px; padding: 3px 9px;
 }
-.tables span { color: var(--accent); border-color: var(--accent-dim); background: rgba(76,141,255,0.07); }
+.tables span { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-soft); }
 .conn { position: relative; width: 1px; height: 34px; background: var(--line-2); }
 .pulse {
   position: absolute; left: 50%; top: 0; width: 3px; height: 3px;
@@ -391,7 +404,7 @@ h2 {
   font-family: var(--mono);
 }
 .flow-steps li.done { opacity: 1; color: var(--fg); }
-.flow-steps li.done::before { content: "✓"; color: var(--ok); }
+.flow-steps li.done::before { content: "✓"; color: var(--accent); }
 .flow-result {
   margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line);
   opacity: 0; transition: opacity 0.35s;
@@ -413,7 +426,7 @@ h2 {
   transition: border-color 0.18s, transform 0.18s, background 0.18s;
 }
 .ex-card:hover { border-color: var(--accent-dim); transform: translateY(-2px); background: var(--card-2); }
-.ex-primary { border-color: var(--accent-dim); background: linear-gradient(180deg, rgba(76,141,255,0.08), transparent); }
+.ex-primary { border-color: var(--accent-dim); background: linear-gradient(180deg, var(--accent-soft), transparent); }
 .ex-k { font-weight: 600; font-size: 16px; }
 .ex-card p { margin: 10px 0 0; font-size: 13.5px; color: var(--fg-2); }
 .ex-go {
