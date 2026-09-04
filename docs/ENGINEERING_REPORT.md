@@ -81,6 +81,8 @@ Infrastructure defined in Terraform: Cloud SQL, Artifact Registry, Cloud Run, Pu
 - 20 consecutive overdraw attempts (balance unchanged)
 - Hash chain tampering (detected by verifier)
 - Concurrent transfers across disjoint account pairs (chain stays linear)
+- Container that fails to start deployed to Cloud Run (traffic never shifted, live service unaffected)
+- Full database restored from backup into a separate instance (reconciliation and hash chain both pass)
 
 ## What load testing found
 
@@ -114,6 +116,9 @@ All three are fixed and covered by tests. The wider point is that the correctnes
 | Crash recovery | Failure injection test | `test_commit_failure_rolls_back` |
 | Tamper detection | Automated test + audit endpoint | `test_hash_chain_detects_tamper`, `GET /audit/chain` |
 | Chain integrity under concurrency | Automated test + load test | `test_concurrent_transfers_keep_chain_linear`, Locust run |
+| Backup is restorable | Restore drill | Cloud SQL export restored to a separate database, 417 transactions and 834 entries matching live, reconciliation and chain both pass |
+| Bad deploy cannot take the service down | Failure injection on live infrastructure | Broken image deployed to Cloud Run, revision failed health check, traffic stayed 100% on the healthy revision |
+| Event delivery | Automated test + live verification | `test_publish_failure_leaves_events_pending`, 415 events drained to Pub/Sub and confirmed by independent pull |
 | Role-based access | Automated test | 11 auth tests covering all role/endpoint combinations |
 | Schema evolution | Migration test | `test_migrations_apply_incrementally` |
 | Decimal precision | Automated test | `test_decimal_precision` (100 x 0.01 = 1.00) |

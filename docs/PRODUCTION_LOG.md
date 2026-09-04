@@ -170,3 +170,35 @@ Close the gap between what the documentation claimed about event publishing and 
 
 ### Next
 Backup and restore evidence. Deployment rollback evidence. Full README.
+
+## Milestone 6
+
+### Goal
+Prove two operational claims rather than assert them: that the database can actually be restored from a backup, and that a bad deployment cannot take the service down.
+
+### Completed
+- Backup and restore proven end to end. Created a Cloud Storage bucket, granted the Cloud SQL service agent write access, exported the live `ledger` database, downloaded the dump, and restored it into a separate local PostgreSQL database.
+- Verified the restored copy independently. The reconciliation engine and the hash chain verifier were run directly against the restored database, not through the live service, and the row counts were compared against the live API.
+- Deployment failure safety proven. Built an image that starts and then exits with a configuration error, pushed it to Artifact Registry, and deployed it to Cloud Run.
+- Confirmed the failed revision never received traffic and the live service was unaffected throughout.
+
+### Problems / Decisions
+- Restored into a local PostgreSQL database rather than back into Cloud SQL. Restoring into a second cloud database would have needed IP allowlisting or a proxy to verify, and would have cost more, without proving anything extra. What matters is that the dump is complete and the restored ledger passes verification, and a local restore shows that just as well.
+- The dump contained one statement that does not apply outside Cloud SQL, a grant to `cloudsqlsuperuser`. Created that role locally before restoring so the restore could run under `ON_ERROR_STOP=1` and any real error would surface rather than being skipped.
+- Deployed the broken image with `--no-traffic` and a revision tag. The point is to show Cloud Run refuses to shift traffic to a revision that fails its health check, and that can be demonstrated without ever putting the live API at risk. Deliberately breaking production to prove it survives would be the wrong trade.
+- Reused the deployed image and replaced only the entrypoint, so the failure is a startup fault rather than a build fault. A build failure would have been caught by CI and would not have exercised the Cloud Run health check at all.
+- The failed revision cannot be deleted while it is the most recently created one. It holds no traffic and is superseded automatically by the next deploy. Its image tag was removed from Artifact Registry.
+
+### Evidence
+- Export produced a 376,687 byte dump in `gs://ledger-api-507618-backups/`
+- Restore ran under `ON_ERROR_STOP=1` and exited 0, so no statement failed
+- Restored copy: 417 transactions, 834 ledger entries, entry sum exactly 0.00
+- Restored copy reconciliation: pass on all six checks (global invariant, per-transaction invariant, account balances, referential integrity, idempotency uniqueness, entry count)
+- Restored copy hash chain: pass, 417 links, 0 broken
+- Restored counts match the live service exactly: 417 transactions and 834 entries on both
+- Bad deploy: revision `ledger-api-00009-faw` failed its health check and gcloud exited 1
+- Traffic stayed 100% on `ledger-api-00008-ssn` throughout, and the failed revision was allocated none
+- Live service during and after the failed deploy: `/health` 200, `/audit/verify` pass, `/audit/chain` pass with 417 links and 0 broken
+
+### Next
+Full README.
