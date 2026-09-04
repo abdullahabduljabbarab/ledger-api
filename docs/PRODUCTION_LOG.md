@@ -1,6 +1,6 @@
 # Production Log
 
-## Day 1
+## Milestone 1
 
 ### Goal
 Scaffold FastAPI service, data model, PostgreSQL, health endpoint, test suite, engineering docs.
@@ -30,7 +30,7 @@ Scaffold FastAPI service, data model, PostgreSQL, health endpoint, test suite, e
 ### Next
 Cloud deployment and CI/CD.
 
-## Day 2
+## Milestone 2
 
 ### Goal
 Deploy to Google Cloud Platform, set up CI/CD, expand test coverage with property-based and resilience testing.
@@ -68,7 +68,7 @@ Deploy to Google Cloud Platform, set up CI/CD, expand test coverage with propert
 ### Next
 Full README with architecture overview, API examples, deployment instructions, live link, build badge. Load testing against live deployment.
 
-## Day 3
+## Milestone 3
 
 ### Goal
 Structured observability, transactional outbox pattern, infrastructure as code, documentation updates.
@@ -99,7 +99,7 @@ Structured observability, transactional outbox pattern, infrastructure as code, 
 ### Next
 Full README. Locust load test against live GCP deployment.
 
-## Day 4
+## Milestone 4
 
 ### Goal
 Authentication and access control, independent verification of the ledger, tamper evidence, threat modelling, then load test the live deployment and fix whatever it finds.
@@ -138,7 +138,7 @@ Authentication and access control, independent verification of the ledger, tampe
 ### Next
 Full README.
 
-## Day 5
+## Milestone 5
 
 ### Goal
 Close the gap between what the documentation claimed about event publishing and what the code actually did.
@@ -146,7 +146,7 @@ Close the gap between what the documentation claimed about event publishing and 
 ### Completed
 - Real Pub/Sub publishing. The relay now hands each event to a transport and only marks the row published once the transport accepts it. Previously it marked events delivered without sending them anywhere.
 - Two transports selected by the `PUBSUB_TOPIC` environment variable. Cloud Run publishes to Pub/Sub. Local runs and tests use a log transport, so the same relay path including failure handling is exercised without cloud credentials. The relay response reports which transport handled the batch.
-- Downstream consumer in `consumer.py`. Subscribes to `transaction-events-sub`, deduplicates on the `event_id` attribute, keeps a running count per transaction type, and nacks malformed messages rather than acking them away.
+- Downstream consumer in `scripts/consumer.py`. Subscribes to `transaction-events-sub`, deduplicates on the `event_id` attribute, keeps a running count per transaction type, and nacks malformed messages rather than acking them away.
 - Created the Pub/Sub topic and subscription in the live project, matching the existing Terraform definitions, and granted the Cloud Run service account the publisher role on the topic.
 - Added `PUBSUB_TOPIC` to the Cloud Run deploy step so the deployed service uses the real transport.
 - Corrected the design document, which claimed exactly-once delivery. The outbox makes event capture atomic with the ledger write, but delivery is at-least-once and consumers must deduplicate.
@@ -162,6 +162,9 @@ Close the gap between what the documentation claimed about event publishing and 
 ### Evidence
 - Pub/Sub topic `transaction-events` and subscription `transaction-events-sub` exist in the live project
 - Cloud Run service account holds `roles/pubsub.publisher` on the topic
+- `POST /outbox/publish` on the live service returns `{"published": 200, "failed": 0, "transport": "pubsub"}`
+- Messages confirmed on the subscription by an independent pull, carrying `event_id` and `event_type` attributes with the full transaction payload as the body
+- Relay drained the full backlog of 415 events to Pub/Sub across three batches, ending at 0 pending
 - 54/54 tests green locally
 - ruff: all checks passed
 

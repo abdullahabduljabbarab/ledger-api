@@ -5,7 +5,7 @@ at-least-once, so the same event can arrive more than once and the consumer
 deduplicates on the event_id attribute before acting on a message.
 
     export PUBSUB_SUBSCRIPTION=projects/<project>/subscriptions/transaction-events-sub
-    python consumer.py
+    python scripts/consumer.py
 
 The dedupe set here is in memory, which is enough to demonstrate the contract.
 A production consumer would keep processed event ids in its own datastore so

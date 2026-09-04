@@ -2,7 +2,7 @@
 Load test harness for the Ledger API.
 
 Run against the live GCP deployment:
-    locust -f loadtest.py --host https://ledger-api-465847189589.europe-west2.run.app
+    locust -f scripts/loadtest.py --host https://ledger-api-465847189589.europe-west2.run.app
 
 Then open http://localhost:8089 to configure users and start the test.
 """

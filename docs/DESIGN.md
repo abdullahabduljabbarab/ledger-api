@@ -122,7 +122,7 @@ Delivery is therefore **at-least-once, not exactly-once**. A crash between a suc
 
 Two transports exist. With `PUBSUB_TOPIC` set, events publish to Pub/Sub, which is how Cloud Run runs. With it unset, events go to the structured log, so local runs and tests exercise the same relay path without cloud credentials. The relay response reports which transport handled the batch, so it is never ambiguous whether a real publish happened.
 
-`consumer.py` is the downstream side: it subscribes to `transaction-events-sub`, deduplicates on `event_id`, and maintains a running count per transaction type.
+`scripts/consumer.py` is the downstream side: it subscribes to `transaction-events-sub`, deduplicates on `event_id`, and maintains a running count per transaction type.
 
 ## Idempotency
 
