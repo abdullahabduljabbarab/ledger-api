@@ -10,7 +10,7 @@ def test_no_put_on_entries(client):
         "amount": "50.00",
         "account_id": acc,
     })
-    entries = client.get(f"/accounts/{acc}/entries").json()
+    entries = client.get(f"/accounts/{acc}/entries").json()["items"]
     entry_id = entries[0]["id"]
 
     resp = client.put(f"/accounts/{acc}/entries/{entry_id}", json={"amount": "999.00"})
@@ -25,7 +25,7 @@ def test_no_delete_on_entries(client):
         "amount": "50.00",
         "account_id": acc,
     })
-    entries = client.get(f"/accounts/{acc}/entries").json()
+    entries = client.get(f"/accounts/{acc}/entries").json()["items"]
     entry_id = entries[0]["id"]
 
     resp = client.delete(f"/accounts/{acc}/entries/{entry_id}")

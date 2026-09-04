@@ -28,7 +28,7 @@ def test_deposit_creates_clearing_entries(client):
         "amount": "50.00",
         "account_id": acc,
     })
-    entries = client.get(f"/accounts/{acc}/entries").json()
+    entries = client.get(f"/accounts/{acc}/entries").json()["items"]
     assert len(entries) == 1
     assert Decimal(entries[0]["amount"]) == Decimal("50.00")
 
