@@ -6,9 +6,18 @@ from decimal import Decimal
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from app.auth import (
+    Role,
+    TokenData,
+    authenticate_user,
+    create_access_token,
+    get_current_user,
+    require_role,
+)
 from app.database import get_db
 from app.logging import request_id_var, setup_logging
 from app.models import (
@@ -58,6 +67,18 @@ async def request_tracing(request: Request, call_next):
     return response
 
 
+@app.post("/auth/token")
+def login(form: OAuth2PasswordRequestForm = Depends()):
+    user = authenticate_user(form.username, form.password)
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password",
+        )
+    token = create_access_token(user)
+    return {"access_token": token, "token_type": "bearer"}
+
+
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
     start = time.monotonic()
@@ -67,7 +88,11 @@ def health(db: Session = Depends(get_db)):
 
 
 @app.post("/accounts", response_model=AccountResponse, status_code=201)
-def post_account(data: AccountCreate, db: Session = Depends(get_db)):
+def post_account(
+    data: AccountCreate,
+    db: Session = Depends(get_db),
+    user: TokenData = Depends(require_role(Role.admin)),
+):
     existing = db.execute(
         select(Account).where(Account.name == data.name)
     ).scalar_one_or_none()
@@ -82,7 +107,11 @@ def post_account(data: AccountCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/accounts/{account_id}", response_model=AccountResponse)
-def get_account(account_id: UUID, db: Session = Depends(get_db)):
+def get_account(
+    account_id: UUID,
+    db: Session = Depends(get_db),
+    user: TokenData = Depends(get_current_user),
+):
     account = db.get(Account, account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -90,7 +119,11 @@ def get_account(account_id: UUID, db: Session = Depends(get_db)):
 
 
 @app.get("/accounts/{account_id}/balance", response_model=BalanceResponse)
-def get_balance(account_id: UUID, db: Session = Depends(get_db)):
+def get_balance(
+    account_id: UUID,
+    db: Session = Depends(get_db),
+    user: TokenData = Depends(get_current_user),
+):
     account = db.get(Account, account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -99,7 +132,11 @@ def get_balance(account_id: UUID, db: Session = Depends(get_db)):
 
 
 @app.post("/transactions", response_model=TransactionResponse, status_code=201)
-def post_transaction(data: TransactionCreate, db: Session = Depends(get_db)):
+def post_transaction(
+    data: TransactionCreate,
+    db: Session = Depends(get_db),
+    user: TokenData = Depends(require_role(Role.admin, Role.customer)),
+):
     txn = create_transaction(db, data)
     return txn
 
@@ -111,6 +148,7 @@ def list_transactions(
     cursor: UUID | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
+    user: TokenData = Depends(get_current_user),
 ):
     stmt = select(Transaction)
 
@@ -148,6 +186,7 @@ def list_entries(
     cursor: UUID | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
+    user: TokenData = Depends(get_current_user),
 ):
     account = db.get(Account, account_id)
     if account is None:
@@ -183,6 +222,7 @@ def get_statement(
     from_date: date | None = Query(None),
     to_date: date | None = Query(None),
     db: Session = Depends(get_db),
+    user: TokenData = Depends(get_current_user),
 ):
     account = db.get(Account, account_id)
     if account is None:
@@ -229,6 +269,7 @@ def get_statement(
 def outbox_pending(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
+    user: TokenData = Depends(require_role(Role.admin)),
 ):
     stmt = (
         select(OutboxEvent)
@@ -255,6 +296,7 @@ def outbox_pending(
 def outbox_publish(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
+    user: TokenData = Depends(require_role(Role.admin)),
 ):
     stmt = (
         select(OutboxEvent)
@@ -272,3 +314,23 @@ def outbox_publish(
     db.commit()
     logger.info(f"Outbox relay: marked {published} events as published")
     return {"published": published}
+
+
+@app.get("/audit/verify")
+def audit_verify(
+    db: Session = Depends(get_db),
+    user: TokenData = Depends(require_role(Role.auditor, Role.admin)),
+):
+    from app.audit import verify_ledger
+
+    return verify_ledger(db)
+
+
+@app.get("/audit/chain")
+def audit_chain(
+    db: Session = Depends(get_db),
+    user: TokenData = Depends(require_role(Role.auditor, Role.admin)),
+):
+    from app.chain import verify_hash_chain
+
+    return verify_hash_chain(db)

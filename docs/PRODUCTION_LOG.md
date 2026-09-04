@@ -66,4 +66,35 @@ Deploy to Google Cloud Platform, set up CI/CD, expand test coverage with propert
 - Hypothesis explored 50 random transaction sequences per property test without invariant violations
 
 ### Next
-Full README with architecture overview, API examples, deployment instructions, live link, build badge. Load testing against live deployment. Update docs to reflect GCP instead of Azure.
+Full README with architecture overview, API examples, deployment instructions, live link, build badge. Load testing against live deployment.
+
+## Day 3
+
+### Goal
+Structured observability, transactional outbox pattern, infrastructure as code, documentation updates.
+
+### Completed
+- Structured JSON logging: all HTTP requests emit JSON log lines to stdout with timestamp, level, request_id, method, path, status_code, duration_ms. Transaction events log creation, idempotent replays, and 409 conflicts with transaction_id correlation. Cloud Run forwards these directly to Google Cloud Logging as structured entries.
+- Request ID propagation: the X-Request-ID header (client-supplied or auto-generated) is stored in a contextvars.ContextVar and attached to every log entry within that request's lifecycle.
+- Transactional outbox: every transaction writes an OutboxEvent row in the same database transaction as the ledger entries. Guarantees exactly-once delivery semantics. New migration (002_outbox) adds the outbox_events table with an index on published_at.
+- Outbox relay endpoints: GET /outbox/pending lists unpublished events, POST /outbox/publish marks them as delivered. In production, a scheduler or background worker calls the relay to push events to Pub/Sub.
+- Terraform infrastructure as code: all GCP resources defined in terraform/ directory. Cloud SQL instance, database, user. Artifact Registry repository. Cloud Run service with Cloud SQL connection. Pub/Sub topic (transaction-events) and subscription. Secret Manager secret for DB password. IAM roles for Cloud Run service account and GitHub deploy service account. Service accounts for both runtime and CI/CD.
+- Documentation updates: DESIGN.md rewritten for GCP, added outbox table to data model, added transactional outbox and observability sections. SECURITY.md updated all Azure references to GCP, added Secret Manager and structured logging mentions.
+- Test count: 31 to 34. Three new outbox tests: event creation on transaction, publish marks events as delivered, idempotent replay does not create duplicate events.
+- Fixed concurrency test: was importing SessionLocal at module level, bypassing the test database fixture. Patched to use the test engine via database_module reference.
+
+### Problems / Decisions
+- Outbox events are written inside the same database transaction as ledger entries. This is the transactional outbox pattern: if the transaction commits, the event is guaranteed to exist. If it rolls back, neither entries nor event persist. No distributed transaction needed.
+- The relay endpoint marks events as published but does not actually push to Pub/Sub yet. The Pub/Sub topic and subscription are provisioned in Terraform. Wiring the actual publish call is straightforward once the infrastructure is applied.
+- Terraform files are declarative config in the repo. They do not affect the running infrastructure until `terraform apply` is run. The current deployment was set up manually via gcloud CLI, so Terraform serves as documentation and reproducibility for now.
+
+### Evidence
+- /health returns 200 with db_latency_ms on live URL
+- POST /transactions creates outbox event (verified via GET /outbox/pending on live)
+- POST /outbox/publish returns {"published": 1} on live, GET /outbox/pending returns 0 after
+- 34/34 tests green locally and in CI
+- ruff: all checks passed
+- GitHub Actions: lint, test, deploy all green
+
+### Next
+Full README. Locust load test against live GCP deployment.

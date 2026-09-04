@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.chain import link_transaction
 from app.models import Account, LedgerEntry, Transaction, TransactionType
 from app.outbox import write_transaction_event
 from app.schemas import TransactionCreate
@@ -167,6 +168,7 @@ def create_transaction(db: Session, data: TransactionCreate) -> Transaction:
     else:
         raise HTTPException(status_code=422, detail="Unknown transaction type")
 
+    link_transaction(db, txn)
     write_transaction_event(db, txn)
     db.commit()
     db.refresh(txn)

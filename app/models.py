@@ -46,6 +46,8 @@ class Transaction(Base):
     type = Column(Enum(TransactionType), nullable=False)
     amount = Column(Numeric(12, 2), nullable=False)
     request_hash = Column(String(64), nullable=False)
+    prev_hash = Column(String(64), nullable=True)
+    chain_hash = Column(String(64), nullable=True)
     reference = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

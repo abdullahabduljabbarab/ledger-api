@@ -5,8 +5,13 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 
 import app.database as database_module
+from app.auth import Role, TokenData, create_access_token
 from app.database import get_db
 from app.main import app
+
+_AUTH = {
+    "Authorization": f"Bearer {create_access_token(TokenData(username='test', role=Role.admin))}"
+}
 
 
 def test_concurrent_withdrawals_cannot_overspend(setup_db):
@@ -24,13 +29,17 @@ def test_concurrent_withdrawals_cannot_overspend(setup_db):
         return TestClient(app)
 
     c = fresh_client()
-    acc = c.post("/accounts", json={"name": f"ConcUser-{run_id}"}).json()["id"]
+    acc = c.post(
+        "/accounts",
+        json={"name": f"ConcUser-{run_id}"},
+        headers=_AUTH,
+    ).json()["id"]
     c.post("/transactions", json={
         "idempotency_key": f"conc-fund-{run_id}",
         "type": "deposit",
         "amount": "100.00",
         "account_id": acc,
-    })
+    }, headers=_AUTH)
 
     def withdraw(key):
         cl = fresh_client()
@@ -39,7 +48,7 @@ def test_concurrent_withdrawals_cannot_overspend(setup_db):
             "type": "withdrawal",
             "amount": "80.00",
             "account_id": acc,
-        })
+        }, headers=_AUTH)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         f1 = pool.submit(withdraw, f"conc-wd-1-{run_id}")
@@ -52,5 +61,5 @@ def test_concurrent_withdrawals_cannot_overspend(setup_db):
     )
 
     c2 = fresh_client()
-    bal = c2.get(f"/accounts/{acc}/balance").json()
+    bal = c2.get(f"/accounts/{acc}/balance", headers=_AUTH).json()
     assert Decimal(bal["balance"]) == Decimal("20.00")
