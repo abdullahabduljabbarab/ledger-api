@@ -7,8 +7,10 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Numeric,
     String,
+    Text,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -64,3 +66,18 @@ class LedgerEntry(Base):
 
     transaction = relationship("Transaction", back_populates="entries")
     account = relationship("Account", back_populates="entries")
+
+
+class OutboxEvent(Base):
+    __tablename__ = "outbox_events"
+    __table_args__ = (
+        Index("ix_outbox_published", "published_at"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    aggregate_type = Column(String(50), nullable=False)
+    aggregate_id = Column(UUID(as_uuid=True), nullable=False)
+    event_type = Column(String(100), nullable=False)
+    payload = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    published_at = Column(DateTime(timezone=True), nullable=True)

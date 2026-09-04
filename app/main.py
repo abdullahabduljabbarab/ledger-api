@@ -1,6 +1,7 @@
+import logging
 import time
 import uuid as uuid_mod
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import UUID
 
@@ -9,7 +10,14 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Account, LedgerEntry, Transaction, TransactionType
+from app.logging import request_id_var, setup_logging
+from app.models import (
+    Account,
+    LedgerEntry,
+    OutboxEvent,
+    Transaction,
+    TransactionType,
+)
 from app.schemas import (
     AccountCreate,
     AccountResponse,
@@ -23,16 +31,30 @@ from app.schemas import (
 )
 from app.service import compute_balance, create_transaction
 
+setup_logging()
+logger = logging.getLogger("ledger.api")
+
 app = FastAPI(title="Ledger API", version="0.1.0")
 
 
 @app.middleware("http")
 async def request_tracing(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID", str(uuid_mod.uuid4()))
+    request_id_var.set(request_id)
     start = time.monotonic()
     response: Response = await call_next(request)
+    duration = (time.monotonic() - start) * 1000
     response.headers["X-Request-ID"] = request_id
-    response.headers["X-Response-Time-Ms"] = f"{(time.monotonic() - start) * 1000:.1f}"
+    response.headers["X-Response-Time-Ms"] = f"{duration:.1f}"
+    logger.info(
+        "Request completed",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "duration_ms": round(duration, 1),
+        },
+    )
     return response
 
 
@@ -201,3 +223,52 @@ def get_statement(
         entries=entries,
         closing_balance=running,
     )
+
+
+@app.get("/outbox/pending")
+def outbox_pending(
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    stmt = (
+        select(OutboxEvent)
+        .where(OutboxEvent.published_at.is_(None))
+        .order_by(OutboxEvent.created_at.asc())
+        .limit(limit)
+    )
+    events = list(db.execute(stmt).scalars().all())
+    return {
+        "pending_count": len(events),
+        "events": [
+            {
+                "id": str(e.id),
+                "event_type": e.event_type,
+                "aggregate_id": str(e.aggregate_id),
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+            }
+            for e in events
+        ],
+    }
+
+
+@app.post("/outbox/publish", status_code=200)
+def outbox_publish(
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    stmt = (
+        select(OutboxEvent)
+        .where(OutboxEvent.published_at.is_(None))
+        .order_by(OutboxEvent.created_at.asc())
+        .limit(limit)
+    )
+    events = list(db.execute(stmt).scalars().all())
+
+    published = 0
+    for event in events:
+        event.published_at = datetime.now(tz=timezone.utc)
+        published += 1
+
+    db.commit()
+    logger.info(f"Outbox relay: marked {published} events as published")
+    return {"published": published}

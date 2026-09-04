@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from decimal import Decimal
 from uuid import UUID
 
@@ -8,7 +9,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Account, LedgerEntry, Transaction, TransactionType
+from app.outbox import write_transaction_event
 from app.schemas import TransactionCreate
+
+logger = logging.getLogger("ledger.service")
 
 EXTERNAL_CLEARING_NAME = "External Clearing"
 
@@ -72,10 +76,18 @@ def create_transaction(db: Session, data: TransactionCreate) -> Transaction:
 
     if existing is not None:
         if existing.request_hash != req_hash:
+            logger.warning(
+                "Idempotency conflict: key reused with different parameters",
+                extra={"transaction_id": str(existing.id)},
+            )
             raise HTTPException(
                 status_code=409,
                 detail="Idempotency key already used with different parameters",
             )
+        logger.info(
+            "Idempotent replay: returning existing transaction",
+            extra={"transaction_id": str(existing.id)},
+        )
         return existing
 
     if data.type == TransactionType.deposit:
@@ -155,6 +167,14 @@ def create_transaction(db: Session, data: TransactionCreate) -> Transaction:
     else:
         raise HTTPException(status_code=422, detail="Unknown transaction type")
 
+    write_transaction_event(db, txn)
     db.commit()
     db.refresh(txn)
+    logger.info(
+        "Transaction created",
+        extra={
+            "transaction_id": str(txn.id),
+            "account_id": str(data.account_id or data.from_account_id),
+        },
+    )
     return txn

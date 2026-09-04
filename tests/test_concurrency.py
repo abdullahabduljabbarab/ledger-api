@@ -4,7 +4,8 @@ from decimal import Decimal
 
 from fastapi.testclient import TestClient
 
-from app.database import SessionLocal, get_db
+import app.database as database_module
+from app.database import get_db
 from app.main import app
 
 
@@ -13,7 +14,7 @@ def test_concurrent_withdrawals_cannot_overspend(setup_db):
 
     def fresh_client():
         def override():
-            db = SessionLocal()
+            db = database_module.SessionLocal()
             try:
                 yield db
             finally:

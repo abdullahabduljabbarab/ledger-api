@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+import app.database as database_module
 from app.database import get_db
 from app.main import app
 from app.models import Base
@@ -21,7 +22,10 @@ TestSession = sessionmaker(bind=engine)
 @pytest.fixture(autouse=True)
 def setup_db():
     Base.metadata.create_all(engine)
+    original_session_local = database_module.SessionLocal
+    database_module.SessionLocal = TestSession
     yield
+    database_module.SessionLocal = original_session_local
     Base.metadata.drop_all(engine)
 
 

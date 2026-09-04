@@ -28,4 +28,42 @@ Scaffold FastAPI service, data model, PostgreSQL, health endpoint, test suite, e
 - ruff: all checks passed
 
 ### Next
-Azure deployment. Provision App Service + PostgreSQL Flexible Server, deploy manually, verify live endpoint.
+Cloud deployment and CI/CD.
+
+## Day 2
+
+### Goal
+Deploy to Google Cloud Platform, set up CI/CD, expand test coverage with property-based and resilience testing.
+
+### Completed
+- Deployed to GCP Cloud Run (europe-west2) with Cloud SQL PostgreSQL 16
+- Live API at https://ledger-api-465847189589.europe-west2.run.app
+- Swagger docs at https://ledger-api-465847189589.europe-west2.run.app/docs
+- GitHub Actions CI/CD: ruff lint, pytest against PostgreSQL service container, auto-deploy to Cloud Run on green main
+- Dockerfile + start.sh for containerised deployment with Alembic migration on startup
+- Deep health check: GET /health pings database, returns connection latency
+- Request tracing middleware: X-Request-ID and X-Response-Time-Ms on every response
+- Cursor-based pagination on GET /transactions and GET /entries
+- Account statement endpoint: GET /accounts/{id}/statement with date range filtering and running balance
+- Property-based testing with Hypothesis (5 tests): random deposit/withdrawal/transfer sequences preserving ledger invariants, balance matching entry sums, idempotent duplicates never creating extra transactions, 409 conflicts never changing state, overdraw prevention across random amounts
+- Resilience testing (4 tests): commit failure rollback verification, rapid-fire idempotency key hammering, failed transfer leaving no partial entries, repeated overdraw attempts preserving balance
+- Locust load test harness for live GCP deployment
+- Test count: 22 to 31
+
+### Problems / Decisions
+- Azure signup blocked entirely (household-level ban, likely from a shared account). Switched to GCP instead. No engineering impact, same PostgreSQL, same containerised deployment model.
+- gcloud CLI had SSL certificate errors in VS Code terminal. Ran commands from Google Cloud SDK Shell instead.
+- Cloud SQL db-f1-micro tier no longer exists for PostgreSQL. Used db-custom-1-3840 (Enterprise edition, covered by $300 free trial credit).
+- Pagination changed the response shape of list endpoints from flat arrays to {items, next_cursor}. Updated all existing tests that read entries.
+- Crash injection test (monkeypatching Session.add mid-transaction) revealed SQLAlchemy autoflush behaviour. Replaced with commit-level failure injection which correctly verifies rollback.
+
+### Evidence
+- /health returns {"status": "ok", "database": "connected", "db_latency_ms": ...} on live URL
+- POST /accounts returns 201 on live GCP endpoint
+- GitHub Actions: lint, test, deploy all green
+- 31/31 tests green locally (pytest, 31.63s)
+- ruff: all checks passed
+- Hypothesis explored 50 random transaction sequences per property test without invariant violations
+
+### Next
+Full README with architecture overview, API examples, deployment instructions, live link, build badge. Load testing against live deployment. Update docs to reflect GCP instead of Azure.

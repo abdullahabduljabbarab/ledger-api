@@ -6,7 +6,7 @@ A portfolio demonstration of backend and cloud engineering. It is not a producti
 
 ## Boundaries
 
-**Secrets management.** Database credentials are stored in environment variables (Azure App Service configuration for production, .env for local development). No credentials are committed to source control. `.gitignore` excludes `.env`.
+**Secrets management.** Database credentials are stored in environment variables (Cloud Run configuration for production, .env for local development). GCP Secret Manager is provisioned via Terraform for credential storage. No credentials are committed to source control. `.gitignore` excludes `.env` and `gcp-key.json`.
 
 **Input validation.** All requests are validated through Pydantic models before reaching the service layer. Invalid types, negative amounts, missing fields, and malformed UUIDs are rejected with structured error responses.
 
@@ -16,7 +16,7 @@ A portfolio demonstration of backend and cloud engineering. It is not a producti
 
 **Error responses.** Structured JSON errors. No stack traces or internal state leaked in responses.
 
-**HTTPS.** Handled by Azure App Service at the infrastructure level. The application itself does not terminate TLS.
+**HTTPS.** Handled by GCP Cloud Run at the infrastructure level. The application itself does not terminate TLS.
 
 ## Authentication
 
@@ -26,5 +26,5 @@ None. This is a deliberate scope decision for a portfolio project. Adding token-
 
 - No rate limiting
 - No role-based access control
-- No audit logging beyond the immutable ledger entries themselves
-- Encryption at rest relies on the managed encryption provided by Azure Database for PostgreSQL. Customer-managed keys are outside project scope.
+- No audit logging beyond the immutable ledger entries and structured JSON logs
+- Encryption at rest relies on the managed encryption provided by Cloud SQL for PostgreSQL. Customer-managed keys are outside project scope.

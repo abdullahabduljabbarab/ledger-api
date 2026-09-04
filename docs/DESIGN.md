@@ -7,18 +7,21 @@ Client
   |
 FastAPI / Pydantic (validation, routing, OpenAPI)
   |
-Service layer (transaction logic, locking, idempotency)
+Service layer (transaction logic, locking, idempotency, outbox)
   |
 SQLAlchemy + Alembic (ORM, migrations)
   |
-PostgreSQL (local: Docker Compose, prod: Azure Database for PostgreSQL)
+PostgreSQL (local: Docker Compose, prod: Cloud SQL)
+  |
+Transactional outbox -> Pub/Sub (event publishing)
 ```
 
-Deployment: Azure App Service (API runtime), GitHub Actions (CI/CD).
+Deployment: GCP Cloud Run (europe-west2), GitHub Actions (CI/CD).
+Infrastructure: Terraform.
 
 ## Data Model
 
-Three tables. Every financial event produces balanced ledger entries. Balances are derived, never stored.
+Four tables. Every financial event produces balanced ledger entries. Balances are derived, never stored.
 
 ### Account
 
@@ -49,6 +52,18 @@ Three tables. Every financial event produces balanced ledger entries. Balances a
 | transaction_id | FK -> Transaction | Required |
 | account_id | FK -> Account | Required |
 | amount | Numeric(12,2) | Signed: positive = credit, negative = debit |
+
+### OutboxEvent
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | Primary key |
+| aggregate_type | String(50) | Always "transaction" |
+| aggregate_id | UUID | Transaction ID |
+| event_type | String(100) | e.g. "transaction.deposit" |
+| payload | Text | JSON event data |
+| created_at | DateTime | Server default |
+| published_at | DateTime | Null until relay publishes |
 
 ## Double-Entry Model
 
@@ -92,9 +107,16 @@ Client: POST /transactions
   -> Validate balance (for withdrawals and transfers)
   -> Create Transaction row
   -> Create LedgerEntry rows (debit + credit)
+  -> Write OutboxEvent (same transaction)
   -> Commit (atomic, all-or-nothing)
   -> Return transaction response
 ```
+
+## Transactional Outbox
+
+Every transaction writes an event to the `outbox_events` table inside the same database transaction as the ledger entries. This guarantees exactly-once event delivery: if the transaction commits, the event exists. If it rolls back, neither ledger entries nor the event are persisted.
+
+A relay endpoint (`POST /outbox/publish`) marks pending events as published. In production, a Cloud Scheduler job or background worker calls the relay, which publishes events to Pub/Sub and marks them as delivered.
 
 ## Idempotency
 
@@ -124,16 +146,25 @@ Transfers lock both accounts in deterministic UUID order to minimise deadlock ri
 
 All monetary values use `Numeric(12,2)` in PostgreSQL and `Decimal` in Python. Floats introduce rounding errors that accumulate over repeated operations. A banking engineer reviewing this repo will check for this immediately.
 
+## Observability
+
+Structured JSON logging with request ID correlation. Every HTTP request gets a unique `X-Request-ID` (client-supplied or auto-generated) that propagates through all log entries for that request. Transaction events (creation, idempotent replays, conflicts) log the transaction ID for traceability.
+
+Log output is JSON to stdout, which Cloud Run forwards directly to Google Cloud Logging as structured log entries.
+
 ## Configuration and Secrets
 
-`DATABASE_URL` is injected via environment variable. Local development uses Docker Compose with a local PostgreSQL instance. Azure deployment uses Azure App Service environment variables pointing to Azure Database for PostgreSQL.
+`DATABASE_URL` is injected via environment variable. Local development uses Docker Compose with a local PostgreSQL instance. GCP deployment uses Cloud Run environment variables pointing to Cloud SQL.
 
-No credentials are committed to source control. The `.gitignore` excludes `.env`.
+No credentials are committed to source control. The `.gitignore` excludes `.env` and `gcp-key.json`.
 
 ## CI/CD
 
 GitHub Actions runs on every push to main:
-1. Install dependencies
-2. Run ruff (linting)
-3. Run pytest against a PostgreSQL service container
-4. On green main: deploy to Azure App Service
+1. Ruff lint
+2. Pytest against a PostgreSQL service container (34 tests)
+3. On green main: build Docker image, push to Artifact Registry, deploy to Cloud Run
+
+## Infrastructure as Code
+
+All GCP resources are defined in Terraform (`terraform/`): Cloud SQL, Artifact Registry, Cloud Run, Pub/Sub topic and subscription, Secret Manager, IAM roles, service accounts.
