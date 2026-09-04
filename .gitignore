@@ -25,3 +25,5 @@ env/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+
+gcp-key.json
