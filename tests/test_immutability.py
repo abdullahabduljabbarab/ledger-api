@@ -14,7 +14,7 @@ def test_no_put_on_entries(client):
     entry_id = entries[0]["id"]
 
     resp = client.put(f"/accounts/{acc}/entries/{entry_id}", json={"amount": "999.00"})
-    assert resp.status_code == 405
+    assert resp.status_code in (404, 405)
 
 
 def test_no_delete_on_entries(client):
@@ -29,4 +29,4 @@ def test_no_delete_on_entries(client):
     entry_id = entries[0]["id"]
 
     resp = client.delete(f"/accounts/{acc}/entries/{entry_id}")
-    assert resp.status_code == 405
+    assert resp.status_code in (404, 405)

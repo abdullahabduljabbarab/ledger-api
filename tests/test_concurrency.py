@@ -1,3 +1,4 @@
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 
@@ -8,6 +9,8 @@ from app.main import app
 
 
 def test_concurrent_withdrawals_cannot_overspend(setup_db):
+    run_id = uuid.uuid4().hex[:8]
+
     def fresh_client():
         def override():
             db = SessionLocal()
@@ -20,9 +23,9 @@ def test_concurrent_withdrawals_cannot_overspend(setup_db):
         return TestClient(app)
 
     c = fresh_client()
-    acc = c.post("/accounts", json={"name": "ConcUser"}).json()["id"]
+    acc = c.post("/accounts", json={"name": f"ConcUser-{run_id}"}).json()["id"]
     c.post("/transactions", json={
-        "idempotency_key": "conc-fund",
+        "idempotency_key": f"conc-fund-{run_id}",
         "type": "deposit",
         "amount": "100.00",
         "account_id": acc,
@@ -38,8 +41,8 @@ def test_concurrent_withdrawals_cannot_overspend(setup_db):
         })
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        f1 = pool.submit(withdraw, "conc-wd-1")
-        f2 = pool.submit(withdraw, "conc-wd-2")
+        f1 = pool.submit(withdraw, f"conc-wd-1-{run_id}")
+        f2 = pool.submit(withdraw, f"conc-wd-2-{run_id}")
         r1, r2 = f1.result(), f2.result()
 
     statuses = sorted([r1.status_code, r2.status_code])
