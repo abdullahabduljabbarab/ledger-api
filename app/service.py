@@ -41,6 +41,7 @@ def _request_hash(data: TransactionCreate) -> str:
             "account_id": str(data.account_id) if data.account_id else None,
             "from_account_id": str(data.from_account_id) if data.from_account_id else None,
             "to_account_id": str(data.to_account_id) if data.to_account_id else None,
+            "reference": data.reference,
         },
         sort_keys=True,
     )
