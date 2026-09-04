@@ -114,9 +114,15 @@ Client: POST /transactions
 
 ## Transactional Outbox
 
-Every transaction writes an event to the `outbox_events` table inside the same database transaction as the ledger entries. This guarantees exactly-once event delivery: if the transaction commits, the event exists. If it rolls back, neither ledger entries nor the event are persisted.
+Every transaction writes an event to the `outbox_events` table inside the same database transaction as the ledger entries. This makes event capture atomic with the ledger write: if the transaction commits, the event exists, and if it rolls back, neither the entries nor the event are persisted. There is no dual write to a broker that could succeed while the database rolls back.
 
-A relay endpoint (`POST /outbox/publish`) marks pending events as published. In production, a Cloud Scheduler job or background worker calls the relay, which publishes events to Pub/Sub and marks them as delivered.
+A relay endpoint (`POST /outbox/publish`) reads pending events oldest first, hands each to a transport, and marks a row published only once the transport has accepted it. If a publish fails, that row and everything after it stay pending and the relay retries them on the next call, which keeps ordering intact.
+
+Delivery is therefore **at-least-once, not exactly-once**. A crash between a successful publish and the commit that marks the row will republish the event. Consumers deduplicate on the `event_id` attribute, which carries the outbox row id.
+
+Two transports exist. With `PUBSUB_TOPIC` set, events publish to Pub/Sub, which is how Cloud Run runs. With it unset, events go to the structured log, so local runs and tests exercise the same relay path without cloud credentials. The relay response reports which transport handled the batch, so it is never ambiguous whether a real publish happened.
+
+`consumer.py` is the downstream side: it subscribes to `transaction-events-sub`, deduplicates on `event_id`, and maintains a running count per transaction type.
 
 ## Idempotency
 

@@ -33,7 +33,7 @@ Run on 2026-09-04 against the live Cloud Run deployment. 828 requests over 60 se
 | Error rate (5xx) | < 1% | 0% | pass |
 | Throughput | > 10 req/s | 13.9 req/s | pass |
 | Reconciliation (`/audit/verify`) | pass | pass | pass |
-| Hash chain (`/audit/chain`) | pass | fail, see below | fixed in 004 |
+| Hash chain (`/audit/chain`) | pass | fail on first run, see below | pass after fix |
 
 Mean response time was 74.5ms and the slowest single request was 580ms. Per-endpoint medians: health 43ms, balance reads 47ms, entry listings 48ms, transaction writes 80ms.
 
@@ -49,6 +49,8 @@ The reconciliation engine passed cleanly, but the hash chain verifier failed wit
 Both are fixed in migration 004: a transaction-scoped advisory lock serialises chain appends, and an explicit `chain_seq` column records true append order. A regression test reproduces the fork with concurrent transfers and fails reliably without the lock.
 
 This is the value of load testing stated plainly. The correctness invariants held throughout, the audit layer detected the fault, and the defect was only reachable under real concurrency.
+
+After deploying the fix, `GET /audit/chain` on the live service returns pass across all 416 chained transactions with zero broken links, and `GET /audit/verify` returns pass with zero discrepancies.
 
 ## Post-Load Verification
 

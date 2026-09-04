@@ -137,3 +137,33 @@ Authentication and access control, independent verification of the ledger, tampe
 
 ### Next
 Full README.
+
+## Day 5
+
+### Goal
+Close the gap between what the documentation claimed about event publishing and what the code actually did.
+
+### Completed
+- Real Pub/Sub publishing. The relay now hands each event to a transport and only marks the row published once the transport accepts it. Previously it marked events delivered without sending them anywhere.
+- Two transports selected by the `PUBSUB_TOPIC` environment variable. Cloud Run publishes to Pub/Sub. Local runs and tests use a log transport, so the same relay path including failure handling is exercised without cloud credentials. The relay response reports which transport handled the batch.
+- Downstream consumer in `consumer.py`. Subscribes to `transaction-events-sub`, deduplicates on the `event_id` attribute, keeps a running count per transaction type, and nacks malformed messages rather than acking them away.
+- Created the Pub/Sub topic and subscription in the live project, matching the existing Terraform definitions, and granted the Cloud Run service account the publisher role on the topic.
+- Added `PUBSUB_TOPIC` to the Cloud Run deploy step so the deployed service uses the real transport.
+- Corrected the design document, which claimed exactly-once delivery. The outbox makes event capture atomic with the ledger write, but delivery is at-least-once and consumers must deduplicate.
+- Test count: 52 to 54. Two new outbox tests: the relay reports its transport, and a failing transport leaves events pending rather than marking them delivered.
+
+### Problems / Decisions
+- The topic and subscription did not exist. Terraform declared them but had never been applied, since the original infrastructure was created by hand with gcloud. Created them directly to match the Terraform definitions rather than running `terraform apply`, which would have tried to take over the manually created Cloud SQL and Cloud Run resources.
+- Chose a log transport over a stub for the no-topic case. A stub that marks rows delivered without sending them is exactly the behaviour being fixed, and it would leave the endpoint reporting success for work it did not do.
+- On a publish failure the relay stops at the first failed row rather than skipping ahead. Events stay in order and the next call retries from the same point.
+- gcloud could not reach the API from this machine for the same reason Locust could not: Norton intercepts TLS and its root is absent from the bundles these tools ship with. Pointed `CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE` at a combined bundle for the session.
+- Confirmed the service account key used during setup is listed in .gitignore and untracked, so it has never entered the repository.
+
+### Evidence
+- Pub/Sub topic `transaction-events` and subscription `transaction-events-sub` exist in the live project
+- Cloud Run service account holds `roles/pubsub.publisher` on the topic
+- 54/54 tests green locally
+- ruff: all checks passed
+
+### Next
+Backup and restore evidence. Deployment rollback evidence. Full README.

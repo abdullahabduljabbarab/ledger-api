@@ -27,6 +27,7 @@ from app.models import (
     Transaction,
     TransactionType,
 )
+from app.publisher import get_transport
 from app.schemas import (
     AccountCreate,
     AccountResponse,
@@ -305,15 +306,25 @@ def outbox_publish(
         .limit(limit)
     )
     events = list(db.execute(stmt).scalars().all())
+    transport = get_transport()
 
     published = 0
+    failed = 0
     for event in events:
+        try:
+            transport.publish(str(event.id), event.event_type, event.payload)
+        except Exception:
+            # Leave this row and the rest pending so ordering holds and the
+            # relay retries them on the next call.
+            logger.exception("Outbox publish failed, event left pending")
+            failed = len(events) - published
+            break
         event.published_at = datetime.now(tz=timezone.utc)
         published += 1
 
     db.commit()
-    logger.info(f"Outbox relay: marked {published} events as published")
-    return {"published": published}
+    logger.info(f"Outbox relay: published {published} events via {transport.name}")
+    return {"published": published, "failed": failed, "transport": transport.name}
 
 
 @app.get("/audit/verify")

@@ -42,6 +42,47 @@ def test_outbox_publish_marks_events(client):
     assert after["pending_count"] == 0
 
 
+def test_publish_reports_transport(client):
+    acc = _create_account(client)
+    client.post("/transactions", json={
+        "idempotency_key": uuid.uuid4().hex,
+        "type": "deposit",
+        "amount": "10.00",
+        "account_id": acc,
+    })
+
+    body = client.post("/outbox/publish").json()
+    assert body["transport"] == "log"
+    assert body["published"] >= 1
+    assert body["failed"] == 0
+
+
+def test_publish_failure_leaves_events_pending(client, monkeypatch):
+    """A transport failure must never mark an event as delivered."""
+    acc = _create_account(client)
+    client.post("/transactions", json={
+        "idempotency_key": uuid.uuid4().hex,
+        "type": "deposit",
+        "amount": "10.00",
+        "account_id": acc,
+    })
+
+    class BrokenTransport:
+        name = "broken"
+
+        def publish(self, event_id, event_type, payload):
+            raise RuntimeError("transport unavailable")
+
+    monkeypatch.setattr("app.main.get_transport", lambda: BrokenTransport())
+
+    body = client.post("/outbox/publish").json()
+    assert body["published"] == 0
+    assert body["failed"] >= 1
+
+    after = client.get("/outbox/pending").json()
+    assert after["pending_count"] >= 1
+
+
 def test_idempotent_replay_does_not_create_outbox_event(client):
     acc = _create_account(client)
     key = uuid.uuid4().hex

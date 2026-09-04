@@ -38,13 +38,15 @@ Infrastructure defined in Terraform: Cloud SQL, Artifact Registry, Cloud Run, Pu
 
 **Serialised chain appends.** Chain linking takes a transaction-scoped PostgreSQL advisory lock, so concurrent writers cannot read the same tip and fork the chain. Append order is recorded in a `chain_seq` column rather than inferred from `created_at`, because `now()` returns transaction start time and therefore does not match commit order. The column is unique, so a failure of the lock surfaces as a database error rather than a silently forked chain. This design came directly out of load testing, which is described below.
 
-**Transactional outbox.** Events are written to an `outbox_events` table inside the same database transaction as ledger entries. This guarantees that if entries exist, the event exists. A relay endpoint marks events as published for downstream consumers.
+**Transactional outbox.** Events are written to an `outbox_events` table inside the same database transaction as ledger entries. This guarantees that if entries exist, the event exists, with no dual write to a broker that could succeed while the database rolls back.
+
+**At-least-once delivery, stated honestly.** The relay publishes to Pub/Sub and only marks a row published once the transport accepts it. A failure leaves that row and everything after it pending, preserving order for the retry. A crash between a successful publish and the commit will republish, so delivery is at-least-once rather than exactly-once and consumers deduplicate on `event_id`. The relay reports which transport handled each batch, so it is never ambiguous whether a real publish occurred.
 
 ## Numbers
 
 | Metric | Value |
 |--------|-------|
-| Test count | 52 |
+| Test count | 54 |
 | Property-based test examples (Hypothesis) | 190+ per run |
 | Alembic migrations | 4 (initial schema, outbox table, hash chain columns, chain sequence) |
 | API endpoints | 15 |
@@ -62,7 +64,7 @@ Infrastructure defined in Terraform: Cloud SQL, Artifact Registry, Cloud Run, Pu
 | Audit / hash chain | 5 | Independent recomputation, chain intact, tamper detected, amounts normalised |
 | Account lifecycle | 4 | Create, retrieve, duplicate name rejected, listing |
 | Resilience / failure injection | 4 | Commit crash rolls back, rapid-fire idempotency, failed transfers leave no partial state |
-| Transactional outbox | 3 | Events created atomically, relay publishes, no duplicates on replay |
+| Transactional outbox | 5 | Events created atomically, relay publishes, no duplicates on replay, transport reported, failed publish leaves rows pending |
 | Concurrency | 2 | Parallel withdrawals cannot overspend, concurrent transfers cannot fork the chain |
 | Idempotency | 2 | Duplicate keys return original, mismatched keys return 409 |
 | Ledger invariants | 2 | Per-transaction and global sum = 0 |
@@ -115,11 +117,13 @@ All three are fixed and covered by tests. The wider point is that the correctnes
 | Role-based access | Automated test | 11 auth tests covering all role/endpoint combinations |
 | Schema evolution | Migration test | `test_migrations_apply_incrementally` |
 | Decimal precision | Automated test | `test_decimal_precision` (100 x 0.01 = 1.00) |
-| API correctness | OpenAPI spec + automated tests | `/docs` serves auto-generated spec, 52 tests validate behaviour |
+| API correctness | OpenAPI spec + automated tests | `/docs` serves auto-generated spec, 54 tests validate behaviour |
 
 ## Design trade-offs
 
 **In-memory user store vs. database users.** The auth system uses a hardcoded user dictionary. In production this would be a users table with registration. For a portfolio project, the RBAC enforcement logic is the engineering point, not the user management CRUD.
+
+**Log transport alongside Pub/Sub.** Rather than stubbing the relay when no topic is configured, there are two real transports selected by the `PUBSUB_TOPIC` environment variable. Local runs and tests exercise the identical relay code path, including the failure handling, without needing cloud credentials. The alternative, skipping the publish and marking rows delivered anyway, would have made the endpoint lie about what it did.
 
 **Outbox relay as an API endpoint vs. background worker.** The relay is triggered via `POST /outbox/publish` rather than a continuously running worker. This is simpler to deploy on Cloud Run (no persistent process needed) and can be called by Cloud Scheduler on a cron. The trade-off is slightly higher event delivery latency.
 
