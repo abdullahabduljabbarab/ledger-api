@@ -1,7 +1,7 @@
 # Ledger API
 
 [![CI](https://github.com/abdullahabduljabbarab/ledger-api/actions/workflows/ci.yml/badge.svg)](https://github.com/abdullahabduljabbarab/ledger-api/actions/workflows/ci.yml)
-[![Terraform](https://github.com/abdullahabduljabbarab/ledger-api/actions/workflows/terraform.yml/badge.svg)](https://github.com/abdullahabduljabbarab/ledger-api/actions/workflows/terraform.yml)
+[![Terraform](https://github.com/abdullahabduljabbarab/ledger-api/actions/workflows/terraform.yml/badge.svg?branch=main)](https://github.com/abdullahabduljabbarab/ledger-api/actions/workflows/terraform.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 An append-only, double-entry financial ledger. Every transaction produces balanced debit and credit entries that sum to zero, balances are derived from those entries rather than stored, and the whole history is chained with SHA-256 so tampering is detectable. It is deployed on Google Cloud Run with Cloud SQL, its infrastructure is defined as code in Terraform, and it is shipped by a CI pipeline that lints, tests, validates the Terraform and deploys on every push to main.
