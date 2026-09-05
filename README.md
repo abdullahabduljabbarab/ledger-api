@@ -1,6 +1,7 @@
 # Ledger API
 
 [![CI](https://github.com/abdullahabduljabbarab/ledger-api/actions/workflows/ci.yml/badge.svg)](https://github.com/abdullahabduljabbarab/ledger-api/actions/workflows/ci.yml)
+[![Terraform](https://github.com/abdullahabduljabbarab/ledger-api/actions/workflows/terraform.yml/badge.svg)](https://github.com/abdullahabduljabbarab/ledger-api/actions/workflows/terraform.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 An append-only, double-entry financial ledger. Every transaction produces balanced debit and credit entries that sum to zero, balances are derived from those entries rather than stored, and the whole history is chained with SHA-256 so tampering is detectable. It is deployed on Google Cloud Run with Cloud SQL, its infrastructure is defined as code in Terraform, and it is shipped by a CI pipeline that lints, tests, validates the Terraform and deploys on every push to main.
@@ -124,7 +125,7 @@ flowchart TD
 
 FastAPI and Pydantic handle validation, routing and the OpenAPI spec. SQLAlchemy and Alembic own the schema and migrations. The full GCP stack (Cloud SQL, Cloud Run, Artifact Registry, Pub/Sub, Secret Manager, IAM, and the backups bucket) is defined as code in Terraform under [`terraform/`](terraform/), and the configuration is validated on every push by the CI pipeline.
 
-**Deployment.** GitHub Actions runs ruff, the full test suite against a PostgreSQL service container, and `terraform validate`, then builds the image, pushes to Artifact Registry and deploys to Cloud Run. Database credentials and the JWT signing key are injected from Secret Manager. Alembic migrations run automatically on container start.
+**Deployment.** GitHub Actions lints, runs the full test suite against a PostgreSQL service container, and validates the Terraform. On green it builds the image, pushes to Artifact Registry and deploys to Cloud Run. Database credentials and the JWT signing key are injected from Secret Manager. Alembic migrations run automatically on container start.
 
 ![Cloud Run revisions](docs/images/17-cloud-run.png)
 
