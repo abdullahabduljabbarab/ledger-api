@@ -68,8 +68,10 @@ resource "google_artifact_registry_repository" "ledger" {
   depends_on = [google_project_service.services]
 }
 
-resource "google_secret_manager_secret" "db_password" {
-  secret_id = "db-password"
+# The full connection string is held as one secret rather than just the
+# password, so Cloud Run never sees a plaintext DATABASE_URL.
+resource "google_secret_manager_secret" "database_url" {
+  secret_id = "database-url"
 
   replication {
     auto {}
@@ -78,9 +80,24 @@ resource "google_secret_manager_secret" "db_password" {
   depends_on = [google_project_service.services]
 }
 
-resource "google_secret_manager_secret_version" "db_password" {
-  secret      = google_secret_manager_secret.db_password.id
-  secret_data = var.db_password
+resource "google_secret_manager_secret_version" "database_url" {
+  secret      = google_secret_manager_secret.database_url.id
+  secret_data = "postgresql://${google_sql_user.postgres.name}:${var.db_password}@/${google_sql_database.ledger.name}?host=/cloudsql/${google_sql_database_instance.ledger_db.connection_name}"
+}
+
+resource "google_secret_manager_secret" "jwt_secret_key" {
+  secret_id = "jwt-secret-key"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.services]
+}
+
+resource "google_secret_manager_secret_version" "jwt_secret_key" {
+  secret      = google_secret_manager_secret.jwt_secret_key.id
+  secret_data = var.jwt_secret_key
 }
 
 resource "google_service_account" "cloud_run" {
@@ -88,8 +105,14 @@ resource "google_service_account" "cloud_run" {
   display_name = "Ledger API Cloud Run"
 }
 
-resource "google_secret_manager_secret_iam_member" "cloud_run_access" {
-  secret_id = google_secret_manager_secret.db_password.id
+resource "google_secret_manager_secret_iam_member" "cloud_run_database_url" {
+  secret_id = google_secret_manager_secret.database_url.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cloud_run.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "cloud_run_jwt" {
+  secret_id = google_secret_manager_secret.jwt_secret_key.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.cloud_run.email}"
 }
@@ -109,8 +132,33 @@ resource "google_cloud_run_v2_service" "ledger_api" {
       }
 
       env {
-        name  = "DATABASE_URL"
-        value = "postgresql://postgres:${var.db_password}@/${google_sql_database.ledger.name}?host=/cloudsql/${google_sql_database_instance.ledger_db.connection_name}"
+        name = "DATABASE_URL"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.database_url.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "JWT_SECRET_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.jwt_secret_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name  = "ENVIRONMENT"
+        value = "production"
+      }
+
+      env {
+        name  = "PUBSUB_TOPIC"
+        value = google_pubsub_topic.transactions.id
       }
 
       resources {
@@ -183,4 +231,19 @@ resource "google_project_iam_member" "github_deploy_roles" {
   project = var.project_id
   role    = each.value
   member  = "serviceAccount:${google_service_account.github_deploy.email}"
+}
+
+# Destination for Cloud SQL database exports used in the backup and restore drill.
+resource "google_storage_bucket" "backups" {
+  name                        = "${var.project_id}-backups"
+  location                    = var.region
+  uniform_bucket_level_access = true
+
+  depends_on = [google_project_service.services]
+}
+
+resource "google_storage_bucket_iam_member" "cloud_sql_backup_writer" {
+  bucket = google_storage_bucket.backups.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_sql_database_instance.ledger_db.service_account_email_address}"
 }

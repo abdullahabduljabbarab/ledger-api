@@ -17,7 +17,13 @@ variable "db_tier" {
 }
 
 variable "db_password" {
-  description = "Database password (use Secret Manager in production)"
+  description = "Database password. Stored in Secret Manager and injected into Cloud Run, never set as a plaintext env var."
+  type        = string
+  sensitive   = true
+}
+
+variable "jwt_secret_key" {
+  description = "HS256 signing key for JWTs. Stored in Secret Manager and injected into Cloud Run."
   type        = string
   sensitive   = true
 }

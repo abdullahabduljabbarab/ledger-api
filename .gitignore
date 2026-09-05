@@ -27,3 +27,9 @@ htmlcov/
 .ruff_cache/
 
 gcp-key.json
+
+# Terraform: ignore local provider cache and state, keep the lock file
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars

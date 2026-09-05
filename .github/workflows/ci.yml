@@ -17,6 +17,18 @@ jobs:
       - run: pip install ruff==0.11.12
       - run: ruff check .
 
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check
+      - run: terraform init -backend=false
+      - run: terraform validate
+
   test:
     runs-on: ubuntu-latest
     services:

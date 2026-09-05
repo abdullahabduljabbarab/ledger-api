@@ -229,3 +229,29 @@ Turn the root URL into a product surface rather than a raw Swagger page, and clo
 
 ### Next
 Full README.
+
+## Milestone 8
+
+### Goal
+Bring the portal onto the same visual identity as the rest of the portfolio, write the README, harden the last credential, make the Terraform reflect reality, and close the repository out.
+
+### Completed
+- Portal re-themed to the portfolio palette. Teal is the brand accent, gold a sparing editorial accent on engineering section labels, and the neutral palette shifted to near-black greenish charcoals. Green, amber and red stay strictly semantic: green always means a genuinely healthy or verified state, never branding. Token-driven, so it was a colour-only change with no layout or behaviour touched.
+- README written from scratch: architecture diagram, the double-entry and correctness walkthrough, event delivery, a verification section with the load-test results and the concurrency defect, run instructions and design decisions. Sixteen screenshots captured against the live deployment are woven in where each proves a specific claim.
+- Database connection string moved to Secret Manager. Cloud Run reads `DATABASE_URL` from a secret with `--set-secrets` rather than a plaintext env var, matching the earlier JWT fix. The database password was rotated to a strong random value at the same time, so the value previously committed to the workflow file is now useless.
+- Terraform reconciled with the live stack: the two real secrets, secret-injected `DATABASE_URL` and `JWT_SECRET_KEY`, the `ENVIRONMENT` and `PUBSUB_TOPIC` variables, and the backups bucket. A `terraform` CI job now runs `fmt`, `init` and `validate` on every push.
+
+### Problems / Decisions
+- The portal was deploying but not serving. Traffic had been pinned to a specific revision during the earlier deployment-failure drill (the `--no-traffic` demo switched the service off "serve latest"), so every subsequent deploy built a healthy revision that received no traffic. `gcloud run services update-traffic --to-latest` restored serving and re-enabled auto-serve for future deploys. This is why the deployment-safety demo is done with `--no-traffic` and a tag, and cleaned up afterwards.
+- Rotating the database password briefly left the running revision on the old cached connections. The service kept answering because Cloud Run reused pooled connections opened at startup, but that is fragile, so a new revision reading the secret was rolled immediately to put it on solid footing.
+- Terraform was never applied; the live environment was built by hand with gcloud and had drifted. Rather than import every resource into state (risky against a live database), the config was updated to describe the current stack accurately and is proven with `terraform validate` in CI. It documents the infrastructure as code; it is not the deploy pipeline, and the README does not claim otherwise.
+- `terraform validate` could not run locally because the antivirus on the development machine intercepts the provider plugin's local gRPC handshake, the same interference that affected every other CLI here. Running it on a clean CI runner sidesteps that and proves it on every push, which is the stronger outcome anyway.
+
+### Evidence
+- Live portal serves the re-themed page; `/status` returns real counts
+- Database password rotated; `DATABASE_URL` and `JWT_SECRET_KEY` both injected from Secret Manager on revision 00013 onward
+- `terraform fmt` passes and `terraform init` resolves the Google provider locally; `terraform validate` runs in CI
+- 58/58 tests green; ruff clean
+
+### Next
+Repository complete.

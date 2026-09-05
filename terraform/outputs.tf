@@ -17,3 +17,8 @@ output "deploy_service_account" {
   description = "GitHub Actions deploy service account email"
   value       = google_service_account.github_deploy.email
 }
+
+output "backups_bucket" {
+  description = "Cloud Storage bucket for database exports"
+  value       = google_storage_bucket.backups.name
+}
