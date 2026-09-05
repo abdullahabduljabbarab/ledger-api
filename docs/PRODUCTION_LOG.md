@@ -255,3 +255,22 @@ Bring the portal onto the same visual identity as the rest of the portfolio, wri
 
 ### Next
 Repository complete.
+
+## Milestone 9
+
+### Goal
+Provision the two system accounts the payment orchestrator settles through, keeping ownership of financial state with the ledger.
+
+### Completed
+- Migration 005 seeds Payment Suspense and Settlement Clearing as system accounts with fixed IDs (`a0000000-0000-4000-8000-000000000001` and `...000002`). Reserve moves customer funds to Payment Suspense, capture moves them on to Settlement Clearing, and release returns them to the customer.
+
+### Problems / Decisions
+- These accounts belong to the ledger because the ledger owns financial state. The orchestrator never creates or modifies ledger accounts; it holds only their fixed IDs and moves money through the transaction API. Fixed IDs keep them stable and known across every environment.
+- The seed runs only on `alembic upgrade head`, so it reaches the deployed database on the next container start. The test suite creates the schema without the seed, so it is unaffected and the two accounts do not appear in test data.
+
+### Evidence
+- Migration chain 001 to 005 applies and seeds both accounts with the fixed IDs
+- 58/58 tests green; ruff clean
+
+### Next
+Payment orchestrator deployment and live integration against these accounts.
