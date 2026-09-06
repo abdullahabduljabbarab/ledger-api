@@ -13,6 +13,8 @@ provider "google" {
   region  = var.region
 }
 
+data "google_project" "current" {}
+
 resource "google_project_service" "services" {
   for_each = toset([
     "run.googleapis.com",
@@ -158,7 +160,7 @@ resource "google_cloud_run_v2_service" "ledger_api" {
 
       env {
         name  = "PUBSUB_TOPIC"
-        value = google_pubsub_topic.transactions.id
+        value = data.google_pubsub_topic.transactions.id
       }
 
       resources {
@@ -192,15 +194,15 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
   member   = "allUsers"
 }
 
-resource "google_pubsub_topic" "transactions" {
+# transaction-events is a shared topic owned by platform-infrastructure; the
+# ledger publishes transaction.recorded onto it. Referenced here, not created here.
+data "google_pubsub_topic" "transactions" {
   name = "transaction-events"
-
-  depends_on = [google_project_service.services]
 }
 
 resource "google_pubsub_subscription" "transactions_sub" {
   name  = "transaction-events-sub"
-  topic = google_pubsub_topic.transactions.id
+  topic = data.google_pubsub_topic.transactions.id
 
   ack_deadline_seconds = 20
 
@@ -211,26 +213,42 @@ resource "google_pubsub_subscription" "transactions_sub" {
 }
 
 resource "google_pubsub_topic_iam_member" "cloud_run_publish" {
-  topic  = google_pubsub_topic.transactions.id
+  topic  = data.google_pubsub_topic.transactions.id
   role   = "roles/pubsub.publisher"
   member = "serviceAccount:${google_service_account.cloud_run.email}"
 }
 
-resource "google_service_account" "github_deploy" {
-  account_id   = "github-deploy"
-  display_name = "GitHub Actions Deploy"
+# Keyless CI deploy: GitHub Actions authenticates via Workload Identity
+# Federation and impersonates a dedicated least-privilege deploy service account,
+# so no service-account key is stored in the repository. The pool and provider are
+# shared and owned by platform-infrastructure; this repo references the pool (its
+# name composed from the project number) and contributes only its own deploy
+# account and binding.
+locals {
+  wif_pool_name = "projects/${data.google_project.current.number}/locations/global/workloadIdentityPools/github-actions"
 }
 
-resource "google_project_iam_member" "github_deploy_roles" {
+resource "google_service_account" "deploy" {
+  account_id   = "ledger-deploy"
+  display_name = "Ledger API Deploy"
+}
+
+resource "google_project_iam_member" "deploy_roles" {
   for_each = toset([
     "roles/run.admin",
     "roles/artifactregistry.writer",
-    "roles/cloudbuild.builds.builder",
     "roles/iam.serviceAccountUser",
   ])
   project = var.project_id
   role    = each.value
-  member  = "serviceAccount:${google_service_account.github_deploy.email}"
+  member  = "serviceAccount:${google_service_account.deploy.email}"
+}
+
+# Only the ledger-api repository may impersonate the deploy service account.
+resource "google_service_account_iam_member" "deploy_wif" {
+  service_account_id = google_service_account.deploy.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${local.wif_pool_name}/attribute.repository/${var.github_owner}/${var.github_repo}"
 }
 
 # Destination for Cloud SQL database exports used in the backup and restore drill.

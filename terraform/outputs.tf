@@ -14,8 +14,8 @@ output "artifact_registry" {
 }
 
 output "deploy_service_account" {
-  description = "GitHub Actions deploy service account email"
-  value       = google_service_account.github_deploy.email
+  description = "Repository-scoped Workload Identity deploy service account email"
+  value       = google_service_account.deploy.email
 }
 
 output "backups_bucket" {

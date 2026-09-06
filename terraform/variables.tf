@@ -27,3 +27,15 @@ variable "jwt_secret_key" {
   type        = string
   sensitive   = true
 }
+
+variable "github_owner" {
+  description = "GitHub owner allowed to deploy via Workload Identity Federation"
+  type        = string
+  default     = "abdullahabduljabbarab"
+}
+
+variable "github_repo" {
+  description = "GitHub repository allowed to impersonate the deploy service account"
+  type        = string
+  default     = "ledger-api"
+}
