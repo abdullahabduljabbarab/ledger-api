@@ -205,7 +205,8 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
 }
 
 # transaction-events is a shared topic owned by platform-infrastructure; the
-# ledger publishes transaction.recorded onto it. Referenced here, not created here.
+# ledger publishes transaction.deposit / withdrawal / transfer onto it. Referenced
+# here, not created here.
 data "google_pubsub_topic" "transactions" {
   name = "transaction-events"
 }
