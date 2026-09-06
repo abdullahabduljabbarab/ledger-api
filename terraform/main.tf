@@ -102,9 +102,19 @@ resource "google_secret_manager_secret_version" "jwt_secret_key" {
   secret_data = var.jwt_secret_key
 }
 
+# Dedicated least-privilege runtime identity: the service runs as this account,
+# not the default compute service account. It holds only Cloud SQL Client, read
+# access to its own two secrets (its database-url and the JWT signing key), and
+# publish on its own transaction-events topic.
 resource "google_service_account" "cloud_run" {
-  account_id   = "ledger-api-runner"
-  display_name = "Ledger API Cloud Run"
+  account_id   = "ledger-api-runtime"
+  display_name = "Ledger API Runtime"
+}
+
+resource "google_project_iam_member" "cloud_run_cloudsql" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.cloud_run.email}"
 }
 
 resource "google_secret_manager_secret_iam_member" "cloud_run_database_url" {

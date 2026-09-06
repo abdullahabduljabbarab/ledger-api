@@ -73,6 +73,7 @@ jobs:
           --image europe-west2-docker.pkg.dev/ledger-api-507618/ledger-api/ledger-api
           --region europe-west2
           --allow-unauthenticated
+          --service-account ledger-api-runtime@ledger-api-507618.iam.gserviceaccount.com
           --add-cloudsql-instances ledger-api-507618:europe-west2:ledger-db
           --set-env-vars PUBSUB_TOPIC=projects/ledger-api-507618/topics/transaction-events,ENVIRONMENT=production
           --set-secrets JWT_SECRET_KEY=jwt-secret-key:latest,DATABASE_URL=database-url:latest
